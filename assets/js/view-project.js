@@ -121,6 +121,8 @@
 
   function buildPanel(p) {
     const A = window.App, st = A.STATUS[p.status], t = A.lineTotals(p), s = p.substation, ss = A.STATUS[s.status];
+    const tm = A.D.turbines[p.turbineModel];
+    const towerLabel = tm.tower === "HLT" ? "140 m Hybrid Lattice Tower" : "tubular steel tower";
     const lineItems = p.lines.map((l) => {
       const c = A.COND[l.conductor], spec = A.D.conductors[l.conductor];
       const frac = l.lengthKm ? (l.strungKm / l.lengthKm) * 100 : 0;
@@ -168,6 +170,11 @@
         </div>
       </div>
       <div style="margin-top:auto;display:flex;flex-direction:column;gap:10px">
+        <div class="wtg-badge">
+          <div class="wtg-id">${p.turbineModel}</div>
+          <div class="wtg-meta"><b>${tm.mw} MW</b> · ${tm.rotor} m rotor · ${towerLabel}
+            <div class="wtg-sub">${A.turbineCount(p)} turbines · ${tm.hub} m hub</div></div>
+        </div>
         <button class="btn btn-primary btn-block" id="enter3d">Enter 3D farm <span class="ar">→</span></button>
         <button class="btn btn-block" onclick="App.go('#/')">← Back to India map</button>
       </div>`;

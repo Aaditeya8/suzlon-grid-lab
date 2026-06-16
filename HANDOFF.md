@@ -33,6 +33,13 @@ Run it: `cd ~/projects/suzlon-grid-lab && python3 -m http.server 8123` → http:
 | **v1 — three-level tool** | **DONE.** Shipped, verified end-to-end via Playwright (no JS errors), committed to git (1st commit). |
 | **v2 — expansion spec** | **DONE.** Written & reviewed (the file above). |
 | **v2 — implementation** | **DONE (workstreams 1–6).** Built on branch `v2-expansion`, verified end-to-end via Playwright — zero console errors across map → project → 3D (S144 construction + S120 energized) → agent; tool backbones (set_filters / explain / portfolio_stats) confirmed driving the UI. Screenshots refreshed (`docs/screenshots/05–10`). **All seven workstreams (0–6) now complete** — full-J&K map regenerated 2026-06-17. |
+| **v2.1 — polish & agent modes** | **DONE.** Spec: `docs/superpowers/specs/2026-06-17-grid-lab-polish-and-agent-modes-spec.md`. See below. |
+
+### v2.1 polish round (2026-06-17) — from review feedback
+- **Cache-busting** — every asset URL in `index.html` carries `?v=<N>` (now `v=5`); **bump it on every change-set** so `python -m http.server` never serves stale CSS/JS. (Root cause of the "Chrome cuts off the substation / Safari is fine" report — it was a stale-cache, not a render bug; ⌘⇧R confirmed the fix.)
+- **3D turbines, take 2** — were squat/blocky with stubby tubes and bare-lattice "pylons". Now tall + slender: a **short open hybrid-lattice base (34%)** under a **tall dominant white tubular tower**; stage-4 shows only a short base; **substation redesigned** (transformer bank + bushings + gantry + lit hut) so it never reads as a turbine lattice. Camera pulled in for the taller turbines.
+- **Agent** — moved to **bottom-right**; **Chat vs Agent** mode toggle (Chat = fast, in-depth, no tools; Agent = + tools + plan/act orchestration); reliability fixes (tool-call messages send `content:null`, empty-turn + error fallbacks → no more silent "no answer"; input re-enables); suggestions hide after first message; thin styled scrollbar (kills the stray scroll component). Live LLM round-trip still needs a Groq key in Settings.
+- **WTG type before 3D** — project panel shows a **turbine badge** (model · MW · rotor · tower · count) beside the *Enter 3D farm* CTA.
 
 ### What v1 already does (working today)
 - **India map**: 18 real-located projects as pins, status colors, KPIs, status/conductor/state

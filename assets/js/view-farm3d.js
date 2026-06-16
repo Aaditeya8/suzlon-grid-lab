@@ -12,7 +12,7 @@
   const noMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
   // ---- orbit camera state ----
-  const orbit = { radius: 158, theta: 0.7, phi: 1.16, tx: 0, ty: 13, tz: 0, auto: true };
+  const orbit = { radius: 172, theta: 0.7, phi: 1.12, tx: 0, ty: 17, tz: 0, auto: true };
   let dragging = false, dragBtn = 0, lastX = 0, lastY = 0, moved = 0;
   let ray, ndc, hoverId = null;
 
@@ -152,28 +152,53 @@
   }
 
   /* ---------------- substation ---------------- */
+  // a clearly-read pooling substation: transformer bank + bushings + gantry + lit control hut.
+  // Deliberately LOW and WIDE so it never reads as a turbine lattice.
   function buildSubstation(L, host) {
     const sub = w(L.sub.x, L.sub.y);
     const sg = new THREE.Group(); sg.position.set(sub.x, 0, sub.z);
-    const padMat = new THREE.MeshStandardMaterial({ color: 0x55524c, roughness: 0.8, metalness: 0.2 });
-    const steel = new THREE.MeshStandardMaterial({ color: 0x8a8f96, roughness: 0.5, metalness: 0.6 });
-    const pad = new THREE.Mesh(new THREE.BoxGeometry(26, 0.6, 18), padMat); pad.position.y = 0.3; sg.add(pad);
-    for (let i = 0; i < 3; i++) {
-      const tr = new THREE.Mesh(new THREE.BoxGeometry(3.4, 5, 3.4), steel);
-      tr.position.set(-7 + i * 7, 2.9, 0); sg.add(tr);
-      const bush = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, 3, 8), steel);
-      bush.position.set(-7 + i * 7, 6, 0); sg.add(bush);
-    }
-    // gantry posts
-    for (let i = 0; i < 4; i++) {
-      const post = new THREE.Mesh(new THREE.BoxGeometry(0.5, 9, 0.5), steel);
-      post.position.set(-10 + i * 6.6, 4.5, -7); sg.add(post);
-    }
+    const padMat = new THREE.MeshStandardMaterial({ color: 0x6f685c, roughness: 0.95, metalness: 0.05 });
+    const steel = new THREE.MeshStandardMaterial({ color: 0x9298a0, roughness: 0.5, metalness: 0.55 });
+    const dark = new THREE.MeshStandardMaterial({ color: 0x55585e, roughness: 0.6, metalness: 0.5 });
     const live = window.App.STATUS[project.substation.status].color;
-    const beacon = new THREE.Mesh(new THREE.BoxGeometry(1.4, 7, 1.4),
-      new THREE.MeshStandardMaterial({ color: 0x2dd4bf, emissive: new THREE.Color(live), emissiveIntensity: 1.0, roughness: 0.4 }));
-    beacon.position.set(10, 4.2, -6); sg.add(beacon);
-    const pl = new THREE.PointLight(new THREE.Color(live), 1.3, 150); pl.position.set(10, 11, -6); sg.add(pl);
+    const lit = new THREE.MeshStandardMaterial({ color: 0x2a2e33, emissive: new THREE.Color(live), emissiveIntensity: 0.9, roughness: 0.5 });
+
+    const pad = new THREE.Mesh(new THREE.BoxGeometry(30, 0.5, 20), padMat); pad.position.y = 0.25; sg.add(pad);
+
+    // transformer bank — two chunky transformers with cooling fins + bushings
+    for (let i = 0; i < 2; i++) {
+      const x = -6 + i * 9;
+      const body = new THREE.Mesh(new THREE.BoxGeometry(5.5, 4, 5), dark); body.position.set(x, 2.3, 2); sg.add(body);
+      for (let f = 0; f < 5; f++) {
+        const fin = new THREE.Mesh(new THREE.BoxGeometry(0.16, 3.2, 5.2), steel);
+        fin.position.set(x - 2.6 + f * 1.3, 2.3, 2); sg.add(fin);
+      }
+      for (let b = 0; b < 3; b++) {
+        const bush = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.26, 2.4, 10), steel);
+        bush.position.set(x - 1.6 + b * 1.6, 5.6, 2); sg.add(bush);
+        const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.34, 0.3, 10), dark);
+        cap.position.set(x - 1.6 + b * 1.6, 6.9, 2); sg.add(cap);
+      }
+    }
+
+    // gantry (incoming lines) with hanging insulator strings
+    const gy = 9;
+    for (let i = 0; i < 2; i++) {
+      const post = new THREE.Mesh(new THREE.BoxGeometry(0.55, gy, 0.55), steel);
+      post.position.set(-9 + i * 18, gy / 2, -7); sg.add(post);
+    }
+    const gbeam = new THREE.Mesh(new THREE.BoxGeometry(19, 0.5, 0.5), steel); gbeam.position.set(0, gy - 0.3, -7); sg.add(gbeam);
+    for (let i = 0; i < 3; i++) {
+      const ins = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 1.8, 8), dark);
+      ins.position.set(-5 + i * 5, gy - 1.4, -7); sg.add(ins);
+    }
+
+    // control hut with a lit window strip + status beacon
+    const hut = new THREE.Mesh(new THREE.BoxGeometry(4.5, 2.8, 3.2), steel); hut.position.set(11, 1.65, 3); sg.add(hut);
+    const win = new THREE.Mesh(new THREE.BoxGeometry(4.6, 0.7, 3.3), lit); win.position.set(11, 2.0, 3); sg.add(win);
+    const beacon = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.4, 5, 8), lit); beacon.position.set(11, 5, -2); sg.add(beacon);
+    const pl = new THREE.PointLight(new THREE.Color(live), 1.0, 95); pl.position.set(8, 11, -2); sg.add(pl);
+
     host.add(sg);
   }
 
@@ -288,7 +313,7 @@
     inspectEl.classList.remove("show");
   }
 
-  function resetView() { orbit.radius = 158; orbit.theta = 0.7; orbit.phi = 1.16; orbit.tx = 0; orbit.ty = 13; orbit.tz = 0; orbit.auto = true; }
+  function resetView() { orbit.radius = 172; orbit.theta = 0.7; orbit.phi = 1.12; orbit.tx = 0; orbit.ty = 17; orbit.tz = 0; orbit.auto = true; }
 
   /* ---------------- build-up sweep ---------------- */
   function animateBuild() {
