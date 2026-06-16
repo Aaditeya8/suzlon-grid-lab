@@ -36,6 +36,7 @@ Run it: `cd ~/projects/suzlon-grid-lab && python3 -m http.server 8123` → http:
 | **v2.1 — polish & agent modes** | **DONE.** Spec: `docs/superpowers/specs/2026-06-17-grid-lab-polish-and-agent-modes-spec.md`. See below. |
 | **v2.2 — GLB turbine + agent reliability** | **DONE (2026-06-17).** Real GLB rotor in the live farm, lattice origin-stacking fixed, in-app agent now surfaces real errors. See below. |
 | **v3 — Insights, stage dates, agent robustness, ship** | **DONE (2026-06-17).** Portfolio **Insights** analytics view; per-stage **finished-date timeline** + **ageing / inter-task-latency** model; **agent reliability overhaul** (non-streaming tool calls, fuzzy nav, graceful fallback); "grid is the bottleneck" headline removed. Committed, pushed to GitHub `main`, deployed on Vercel from git. See below. |
+| **v3.1 — follow-ups** | **DONE (2026-06-17, cache `v=14`).** 3D HUD overlap fixed; Dog/Panther 3D feeders made visible (tubes); agent **page-aware** + **criteria-based nav**; two new agent tools (`compare_projects`, `highlight_project` → flashes a map pin). All live-verified, on `main` + Vercel. See below. |
 
 ### v2.1 polish round (2026-06-17) — from review feedback
 - **Cache-busting** — every asset URL in `index.html` carries `?v=<N>` (now `v=5`); **bump it on every change-set** so `python -m http.server` never serves stale CSS/JS. (Root cause of the "Chrome cuts off the substation / Safari is fine" report — it was a stale-cache, not a render bug; ⌘⇧R confirmed the fix.)
@@ -95,6 +96,28 @@ Run it: `cd ~/projects/suzlon-grid-lab && python3 -m http.server 8123` → http:
 - **Shipped:** committed (was uncommitted since v2.1), pushed to **GitHub `main`** (`Aaditeya8/suzlon-grid-lab`),
   **deployed on Vercel from git** (auto-deploy on push). Groq key stays client-side (localStorage) — for the
   public deploy, paste a key in Settings to enable live LLM answers; everything else works without one.
+
+### v3.1 follow-ups (2026-06-17, same day — cache `v=14`, live & verified)
+- **3D HUD fix** — the bottom-right controls caption ("drag to orbit · scroll · click a turbine · showing N/M")
+  overlapped the centered EPC-stage legend **and** sat under the Ask FAB. Now: caption trimmed to the hint and
+  **lifted above the FAB** (`#farm-view .hud-br { bottom:74px; max-width:320px }`); **"showing N/M" moved into the
+  legend** (`buildLegend(L)` + `.lg-shown`). Verified by bounding boxes — no overlap.
+- **3D feeders now visible** — Dog/Panther ground lines were 1px `THREE.Line`s at 0.5 opacity (≈invisible on sand).
+  Now energized feeders are **`tubeLine()` tubes** (TubeGeometry+CatmullRom, unlit full-bright; Panther r0.62 /
+  Dog r0.36) with brighter flow pulses (peak 0.95). Confirmed visible in-scene.
+- **Agent page-awareness** (`agent.js` `currentContextLine()`) — current view/project injected into the prompt
+  ("RIGHT NOW the user is looking at the 3D FARM scene for Fatehgarh…") and it seeds `lastProject`, so "where am I",
+  "this farm", "open this project" resolve. Verified live.
+- **Criteria-based nav** — new prompt rule: when given criteria not a name ("the 3D farm for a fully
+  commissioned/energized site", "biggest stranded farm"), the agent picks a matching project from the index and
+  navigates. Fixes the prior "answered instead of navigating" failure. Verified live (→ opened Bhuj's 3D farm).
+- **Two new agent tools** — `compare_projects` (side-by-side metrics for 2–4 farms; one call vs many) and
+  `highlight_project` (UI action: go to map + **flash the pin** — `App.mapControls.highlight()` + `.pin.flash`
+  keyframe; answers "where is X / locate X on the map"). Both verified live.
+- **Verification note:** all live tests used a throwaway Groq key the user pasted then **revoked** — never written
+  to git (client-side localStorage only). Groq's llama tool-calling still flakes intermittently (a transient 400
+  was seen auto-recover via the retry); the retry + graceful fallback mean the user always gets an answer. A
+  server-side proxy would be the only full fix (and would also enable a key-free shared agent) — deferred.
 
 ### What v1 already does (working today)
 - **India map**: 18 real-located projects as pins, status colors, KPIs, status/conductor/state
@@ -156,9 +179,13 @@ chat UI), `⟳ view-farm3d.js` (rewrite), `~ app.js` (stage model + glossary), `
 - ✅ **6 Groq agent** — new `agent.js`: left dock, SSE streaming, Settings/localStorage key, tools (navigate/set_filters/list_projects/get_project/portfolio_stats/explain) that drive the UI. **Live LLM round-trip still needs a Groq key pasted in Settings** to verify (UI + tool backbones already confirmed).
 - ✅ **0 J&K map regen** — DONE (2026-06-17). `india-geo.js` regenerated from `udit-001/india-maps-data` (India-claim-correct): 759 districts dissolved → state outlines via shapely `unary_union`, simplified + projected with the same equirectangular transform (so pins still align). Full Jammu & Kashmir incl. PoK + Aksai Chin (J&K UT + Ladakh UT); bbox now reaches lat 37.4 (was 35.8). Verified in-browser — 0 console errors, pins correctly placed.
 
-**Next:** v2 stays on `v2-expansion` (kept as-is — `master` remains v1, per your call). Open items: (1) paste a
-valid Groq key in Settings (⚙) for a live agent answer — error paths now verified, so any failure self-explains;
-(2) decide whether to wire `loader-lab.html` into the farm's first paint; (3) commit the v2.2 change-set.
+**Status (current):** branch renamed `v2-expansion` → **`main`** (the deployable canonical branch; old `master`=v1
+pointer is superseded since `main` descends from it). **Live: https://suzlon-grid-lab.vercel.app** (public GitHub
+`Aaditeya8/suzlon-grid-lab`, git-connected so **push to `main` auto-deploys**). Agent verified live end-to-end.
+Open items: (1) **optional server-side Groq proxy** — would harden the key (currently client-side localStorage) and
+enable a **key-free shared agent**, plus dodge llama's intermittent tool-call flakiness; (2) decide whether to wire
+`loader-lab.html` into the farm's first paint; (3) `bench`/`turbine-lab.html` + `loader-lab.html` are parked test
+rigs, not linked from the app.
 
 ---
 
