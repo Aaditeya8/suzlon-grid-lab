@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Suzlon Grid Lab — Wind Power Evacuation Command Center</title>
+  <meta name="description" content="Visual tracker for wind-farm 33kV power-evacuation build-out across India — Dog & Panther lines, pooling substations, and a 3D farm view. Unofficial concept lab." />
+  <link rel="stylesheet" href="assets/css/styles.css" />
+</head>
+<body>
+  <header id="topbar">
+    <div class="wordmark">Suzlon / Grid Lab</div>
+    <nav class="crumbs" id="crumbs"></nav>
+    <div class="topbar-right">
+      <span class="asof" id="asof"></span>
+    </div>
+  </header>
+
+  <main id="app">
+    <!-- LEVEL 1 — national map -->
+    <section id="map-view" class="view">
+      <aside class="map-sidebar"><!-- built by view-map.js --></aside>
+      <div class="map-wrap">
+        <svg id="india-svg" preserveAspectRatio="xMidYMid meet"></svg>
+        <div class="map-flyout" id="map-flyout"></div>
+        <div class="map-overlay-title">
+          <h1>The grid is the bottleneck.</h1>
+          <p>Turbines erect in months; the 33&nbsp;kV evacuation lines and pooling
+             substations that let them export take far longer. This tracks that build-out.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- LEVEL 2 — project -->
+    <section id="project-view" class="view">
+      <div class="proj-stage">
+        <svg id="schematic"></svg>
+        <div class="stage-legend"></div>
+        <div class="stage-cap"></div>
+      </div>
+      <aside class="proj-panel" id="proj-panel"><!-- built by view-project.js --></aside>
+    </section>
+
+    <!-- LEVEL 3 — 3D farm -->
+    <section id="farm-view" class="view">
+      <canvas id="gl"></canvas>
+      <div class="hud hud-tl"><h3 id="farm-name"></h3><div class="sub" id="farm-sub"></div></div>
+      <div class="hud hud-bl" id="farm-stats"></div>
+      <div class="hud hud-br" id="farm-cap"></div>
+      <div class="hud hud-tr" id="farm-nav"></div>
+      <div class="farm-fallback" id="farm-fallback">
+        <h3 style="font-family:var(--display);font-weight:800;font-size:22px">3D view needs WebGL</h3>
+        <p>Your browser/device couldn't start a WebGL context. The map and project views
+           work without it.</p>
+        <button class="btn" onclick="App.go('#/')">← Back to India map</button>
+      </div>
+    </section>
+  </main>
+
+  <!-- vendored, offline -->
+  <script src="assets/vendor/three.min.js"></script>
+  <script src="assets/vendor/anime.iife.min.js"></script>
+  <!-- data -->
+  <script src="assets/data/projects.js"></script>
+  <script src="assets/data/india-geo.js"></script>
+  <!-- engine + app -->
+  <script src="assets/js/turbine.js"></script>
+  <script src="assets/js/app.js"></script>
+  <script src="assets/js/view-map.js"></script>
+  <script src="assets/js/view-project.js"></script>
+  <script src="assets/js/view-farm3d.js"></script>
+</body>
+</html>
