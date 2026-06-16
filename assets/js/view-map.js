@@ -203,6 +203,20 @@
     return { status: Array.from(filter.status), conductor: filter.conductor, state: filter.state,
              visible: window.App.D.projects.filter(passes).length };
   }
+  // flash a project's pin on the map (used by the agent's highlight_project tool)
+  function highlight(id) {
+    setTimeout(() => {
+      filter.status = new Set(["planned", "construction", "commissioned", "energized"]);
+      filter.state = "All"; filter.conductor = "All";
+      applyFilter();                                          // ensure the pin is visible
+      const pin = Array.prototype.find.call(svg.querySelectorAll(".pin"), (g) => g.dataset.id === id);
+      if (!pin) return;
+      pin.parentNode.appendChild(pin);                        // bring to front
+      pin.classList.remove("flash"); void pin.getBoundingClientRect();
+      pin.classList.add("flash");
+      setTimeout(() => pin.classList.remove("flash"), 3400);
+    }, 90);                                                   // let the map view become active first
+  }
 
   /* ---------- lifecycle ---------- */
   function init() {
@@ -212,7 +226,7 @@
     sidebar = el.querySelector(".map-sidebar");
     buildMap();
     renderSidebar();
-    window.App.mapControls = { setFilters: setFilters, getFilters: getFilters };
+    window.App.mapControls = { setFilters: setFilters, getFilters: getFilters, highlight: highlight };
   }
   function show() { applyFilter(); }
 

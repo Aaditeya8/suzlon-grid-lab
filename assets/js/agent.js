@@ -42,6 +42,14 @@
     { type: "function", function: {
       name: "explain", description: "Define a domain term (dog, panther, 33kv, hlt, s120, s144, substation, evacuation, stranded, acsr, stages, latency, ageing).",
       parameters: { type: "object", properties: { topic: { type: "string" } }, required: ["topic"] } } },
+    { type: "function", function: {
+      name: "compare_projects",
+      description: "Compare 2–4 farms side by side: capacity, model, status, evac %, current EPC stage + days in stage, stranded flag, km strung/total, substation, projected commissioning. Pass ids (names or ids; fuzzy-matched).",
+      parameters: { type: "object", properties: { ids: { type: "array", items: { type: "string" } } }, required: ["ids"] } } },
+    { type: "function", function: {
+      name: "highlight_project",
+      description: "Show WHERE a farm is: go to the India map and visually flash its pin. Use for 'where is X', 'locate/point to X on the map'. Pass projectId (name or id; fuzzy-matched).",
+      parameters: { type: "object", properties: { projectId: { type: "string" } }, required: ["projectId"] } } },
   ];
 
   function execTool(name, args) {
@@ -125,6 +133,28 @@
         const txt = A.glossaryLookup(args.topic);
         return { topic: args.topic, definition: txt || "No glossary entry; try dog, panther, 33kv, hlt, s120, s144, substation, evacuation, stranded, stages." };
       }
+      if (name === "compare_projects") {
+        const ids = (args.ids || []).map((x) => A.resolveProjectId(x) || x);
+        const rows = ids.map((id) => {
+          const p = A.projectById(id);
+          if (!p) return { id: id, error: "no project matching '" + id + "'" };
+          const tl = A.stageTimeline(p), t = A.lineTotals(p);
+          return { id: p.id, name: p.name, state: p.state, model: p.turbineModel, status: p.status,
+            capacityMW: p.capacityMW, progressPct: p.progressPct, currentStage: A.STAGE[tl.currentStage].label,
+            daysInStage: tl.ageDays, stranded: p.status === "commissioned", kmStrung: Math.round(t.strung),
+            kmTotal: Math.round(t.len), substationStatus: p.substation.status,
+            commissioningTarget: p.commissioning, projectedCommissioning: A.fmtMonth(tl.etaDate) };
+        });
+        return { compared: rows };
+      }
+      if (name === "highlight_project") {
+        const id = A.resolveProjectId(args.projectId);
+        if (!id) return { ok: false, error: "no project matching '" + args.projectId + "'" };
+        lastProject = id; const p = A.projectById(id);
+        A.go("#/");
+        if (A.mapControls && A.mapControls.highlight) A.mapControls.highlight(id);
+        return { ok: true, projectId: id, name: p.name, district: p.district, state: p.state, located: "flashing its pin on the India map" };
+      }
     } catch (e) { return { error: String(e && e.message || e) }; }
     return { error: "unknown tool " + name };
   }
@@ -187,7 +217,7 @@
         " Answer directly, accurately and in depth from the data below; cite real numbers (MW, km, days, stages, dates). Interpret loose or misspelled project names charitably. You are in CHAT mode: you cannot operate the UI — if the user asks to see/filter/open/navigate something or wants the charts, briefly answer then suggest switching to Agent mode (or the Insights page). Keep it concise but substantive.\n\nKNOWLEDGE:\n" + knowledge();
     }
     return "You are the Grid Lab agent: you both ANSWER and OPERATE the app via tools. " + ctx + loc +
-      " Rules: (1) If the user wants to see/show/open/filter/navigate something, DO IT with a tool. navigate views: 'map', 'insights' (any 'show the analysis/charts/latency/ageing' request), 'project' ('open/take me to <farm>'), 'farm' ('…in 3D' or 'show the 3D farm'). Use set_filters to filter the map. (2) When the user gives CRITERIA instead of a name (e.g. 'a fully commissioned/energized site', 'the biggest stranded farm'), pick a matching project from the index below yourself, then navigate to it. (3) Resolve farm names via the index; tools fuzzy-match ids, and if a farm is in context you may omit projectId ('take me there'). (4) For exact numbers call get_project or portfolio_stats and synthesise — don't guess. (5) ALWAYS include a short natural-language reply alongside any tool call. Keep replies concise and concrete.\n\nPROJECT INDEX (id — name):\n" + projectIndex();
+      " Rules: (1) If the user wants to see/show/open/filter/navigate something, DO IT with a tool. navigate views: 'map', 'insights' (any 'show the analysis/charts/latency/ageing' request), 'project' ('open/take me to <farm>'), 'farm' ('…in 3D' or 'show the 3D farm'). Use set_filters to filter the map. (2) When the user gives CRITERIA instead of a name (e.g. 'a fully commissioned/energized site', 'the biggest stranded farm'), pick a matching project from the index below yourself, then navigate to it. (3) Resolve farm names via the index; tools fuzzy-match ids, and if a farm is in context you may omit projectId ('take me there'). (4) For exact numbers call get_project or portfolio_stats and synthesise — don't guess. Use compare_projects for 'compare X and Y', and highlight_project for 'where is X / locate X on the map'. (5) ALWAYS include a short natural-language reply alongside any tool call. Keep replies concise and concrete.\n\nPROJECT INDEX (id — name):\n" + projectIndex();
   }
 
   /* ----------------------- groq streaming ----------------------- */

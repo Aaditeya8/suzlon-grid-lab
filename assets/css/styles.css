@@ -486,3 +486,9 @@ select.fl-select {
 .tl-done { color: var(--dim); }
 .tl-lat { color: var(--dim-2); font-size: 10px; }
 .tl-proj { color: var(--dim-2); }
+
+/* agent highlight_project — flash a project pin on the map */
+.pin.flash .halo { animation: pinFlash 0.75s ease-out 4; }
+.pin.flash .ring { stroke-width: 2.6; opacity: 1; }
+.pin.flash .core { stroke: #ffffff; stroke-width: 2; }
+@keyframes pinFlash { 0% { opacity: 0.85; r: var(--r0); } 65% { opacity: 0; } 100% { opacity: 0; r: calc(var(--r0) * 2); } }
