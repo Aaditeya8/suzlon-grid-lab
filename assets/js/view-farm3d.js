@@ -1,13 +1,20 @@
-/* view-farm3d.js — LEVEL 3: three.js wind-farm fly-through.
-   Reuses the vendored three.js engine; low-poly turbines cloned across the shared
-   App.layout so the 2D schematic and the 3D scene agree. */
+/* view-farm3d.js — LEVEL 3: interactive 3D wind farm, modeled on Fatehgarh (Thar desert).
+   Per-turbine EPC-stage geometry (turbine3d.js), S144 HLT vs S120 tubular, clockwise rotors,
+   custom orbit/zoom/pan, click-a-turbine inspect, animated Dog/Panther ground feeders, and a
+   build-up sweep. Turbines come from the shared App.layout so 2D and 3D always agree. */
 (function () {
   "use strict";
-  let el, canvas, fallback;
-  let renderer, scene, camera, mats, template, contentGroup;
-  let rotors = [], raf = null, clock = 0, started = false;
+  let el, canvas, fallback, legendEl, inspectEl, controlsEl;
+  let renderer, scene, camera, contentGroup, sun;
+  let farm = null, rotors = [], picks = [], feeders = [], scrub = [], selRing = null;
+  let raf = null, clock = 0, started = false, project = null, building = 0;
   const FIELD = 240;
   const noMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  // ---- orbit camera state ----
+  const orbit = { radius: 215, theta: 0.72, phi: 1.0, tx: 0, ty: 9, tz: 0, auto: true };
+  let dragging = false, dragBtn = 0, lastX = 0, lastY = 0, moved = 0;
+  let ray, ndc, hoverId = null;
 
   function hasWebGL() {
     try {
@@ -15,124 +22,305 @@
       return !!(window.WebGLRenderingContext && (c.getContext("webgl") || c.getContext("experimental-webgl")));
     } catch (e) { return false; }
   }
+  function w(nx, ny) { return { x: (nx - 0.5) * FIELD, z: (ny - 0.5) * FIELD }; }
 
-  function makeMats() {
-    return {
-      tower:   new THREE.MeshStandardMaterial({ color: 0x3a4048, roughness: 0.6, metalness: 0.35 }),
-      nacelle: new THREE.MeshStandardMaterial({ color: 0x2b3036, roughness: 0.5, metalness: 0.4 }),
-      hub:     new THREE.MeshStandardMaterial({ color: 0x4a5159, roughness: 0.45, metalness: 0.5 }),
-      blade:   new THREE.MeshStandardMaterial({ color: 0xd7dde2, roughness: 0.4, metalness: 0.1 }),
-      ground:  new THREE.MeshStandardMaterial({ color: 0x14181d, roughness: 1, metalness: 0 }),
-      sub:     new THREE.MeshStandardMaterial({ color: 0x2a3036, roughness: 0.5, metalness: 0.5 }),
-      subGlow: new THREE.MeshStandardMaterial({ color: 0x2dd4bf, emissive: 0x2dd4bf, emissiveIntensity: 1.1, roughness: 0.4 }),
-    };
-  }
-
-  function buildTemplateTurbine() {
-    const g = new THREE.Group();
-    const tower = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.6, 14, 10), mats.tower);
-    tower.position.y = 7; g.add(tower);
-    const nac = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.95, 2.6), mats.nacelle);
-    nac.position.set(0, 14.3, -0.2); g.add(nac);
-    const rotor = new THREE.Group(); rotor.name = "rotor"; rotor.position.set(0, 14.4, 1.3);
-    const hub = new THREE.Mesh(new THREE.ConeGeometry(0.42, 0.9, 12), mats.hub);
-    hub.rotation.x = Math.PI / 2; rotor.add(hub);
-    for (let i = 0; i < 3; i++) {
-      const blade = new THREE.Mesh(new THREE.BoxGeometry(0.22, 7, 0.5), mats.blade);
-      blade.geometry.translate(0, 3.6, 0);
-      blade.rotation.z = (i * 2 * Math.PI) / 3;
-      rotor.add(blade);
-    }
-    g.add(rotor);
-    return g;
-  }
-
+  /* ---------------- scene setup ---------------- */
   function setup() {
-    renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+    renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x0b0e11);
-    scene.fog = new THREE.Fog(0x0b0e11, 170, 430);
-    camera = new THREE.PerspectiveCamera(46, 1, 0.1, 2000);
-    scene.add(new THREE.HemisphereLight(0x9fb8d0, 0x0f1419, 0.75));
-    const moon = new THREE.DirectionalLight(0xcfe0ff, 0.95); moon.position.set(-90, 130, 70); scene.add(moon);
-    scene.add(new THREE.AmbientLight(0x404850, 0.35));
-    mats = makeMats();
-    template = buildTemplateTurbine();
+    const haze = 0xcdb286;                                   // hazy Thar sky / dust
+    scene.background = new THREE.Color(haze);
+    scene.fog = new THREE.Fog(haze, 180, 640);
+    camera = new THREE.PerspectiveCamera(48, 1, 0.5, 3000);
+    scene.add(new THREE.HemisphereLight(0xf2e4c4, 0x6e5028, 0.62));
+    sun = new THREE.DirectionalLight(0xfff1d6, 1.55);
+    sun.position.set(-120, 130, 60); scene.add(sun);
+    scene.add(new THREE.AmbientLight(0x5a4a33, 0.32));
+    ray = new THREE.Raycaster(); ndc = new THREE.Vector2();
+    bindControls();
     started = true;
     window.addEventListener("resize", resize);
   }
 
-  function w(nx, ny) { return { x: (nx - 0.5) * FIELD, z: (ny - 0.5) * FIELD }; }
+  function buildTerrain() {
+    const g = new THREE.Group();
+    const ground = new THREE.Mesh(new THREE.PlaneGeometry(2400, 2400),
+      new THREE.MeshStandardMaterial({ color: 0xb08a52, roughness: 1, metalness: 0 }));
+    ground.rotation.x = -Math.PI / 2; ground.position.y = 0; g.add(ground);
+    // faint hard-pan grid for scale
+    const grid = new THREE.GridHelper(FIELD * 2.2, 44, 0x8f6f40, 0xa07f4c);
+    grid.material.opacity = 0.22; grid.material.transparent = true; grid.position.y = 0.03; g.add(grid);
+    // sparse desert scrub (deterministic)
+    scrub = [];
+    const rnd = window.App.mulberry32(99);
+    const bushMat = new THREE.MeshStandardMaterial({ color: 0x6e6f3a, roughness: 1 });
+    for (let i = 0; i < 90; i++) {
+      const b = new THREE.Mesh(new THREE.IcosahedronGeometry(0.5 + rnd() * 0.7, 0), bushMat);
+      b.position.set((rnd() - 0.5) * FIELD * 1.9, 0.25, (rnd() - 0.5) * FIELD * 1.9);
+      b.scale.y = 0.6; g.add(b);
+    }
+    return g;
+  }
 
-  function lineFrom(points, color, dashed) {
-    const geo = new THREE.BufferGeometry().setFromPoints(points.map((p) => new THREE.Vector3(p.x, 0.5, p.z)));
+  /* ---------------- feeders (animated current flow) ---------------- */
+  function makePath(points) {
+    const pts = points.map((p) => new THREE.Vector3(p.x, 0.45, p.z));
+    const segs = []; let total = 0;
+    for (let i = 0; i < pts.length - 1; i++) {
+      const d = pts[i].distanceTo(pts[i + 1]);
+      segs.push({ a: pts[i], b: pts[i + 1], d: d, acc: total }); total += d;
+    }
+    return {
+      length: total, pts: pts,
+      at: function (t) {
+        const dist = (t - Math.floor(t)) * total;
+        let s = segs[segs.length - 1] || { a: pts[0], b: pts[0], d: 1, acc: 0 };
+        for (let i = 0; i < segs.length; i++) { if (dist <= segs[i].acc + segs[i].d) { s = segs[i]; break; } }
+        const f = s.d ? (dist - s.acc) / s.d : 0;
+        return new THREE.Vector3().lerpVectors(s.a, s.b, Math.max(0, Math.min(1, f)));
+      },
+    };
+  }
+
+  function staticLine(points, color, dashed) {
+    const geo = new THREE.BufferGeometry().setFromPoints(points.map((p) => new THREE.Vector3(p.x, 0.4, p.z)));
     const mat = dashed
-      ? new THREE.LineDashedMaterial({ color, dashSize: 3, gapSize: 3, opacity: 0.5, transparent: true })
-      : new THREE.LineBasicMaterial({ color });
+      ? new THREE.LineDashedMaterial({ color: color, dashSize: 3, gapSize: 4, transparent: true, opacity: 0.5 })
+      : new THREE.LineBasicMaterial({ color: color, transparent: true, opacity: 0.9 });
     const line = new THREE.Line(geo, mat);
     if (dashed) line.computeLineDistances();
     return line;
   }
 
+  const pulseMat = {};
+  function pulseMaterial(color) {
+    if (!pulseMat[color]) pulseMat[color] = new THREE.MeshBasicMaterial({ color: color });
+    return pulseMat[color];
+  }
+
+  function buildFeeders(L, host) {
+    feeders = [];
+    const sub = w(L.sub.x, L.sub.y);
+    const COND = window.App.COND;
+    const dogHex = 0x5ab8e8, panHex = 0xf5a623;
+
+    // Panther spine: substation → top of energized trunk (flow toward substation)
+    const rowsByY = L.rows.slice().sort((a, b) => a.rowY - b.rowY);
+    const topJoin = w(0.5, rowsByY[0].rowY);
+    host.add(staticLine([sub, topJoin], 0x6b5a36, true));                  // ghost spine
+    const trunkRows = L.rows.filter((r) => r.trunkLive);
+    if (trunkRows.length) {
+      const topTrunk = w(0.5, Math.min.apply(null, trunkRows.map((r) => r.rowY)));
+      host.add(staticLine([sub, topTrunk], panHex, false));
+      addPulses(makePath([topTrunk, sub]), panHex, 1.3, 0.8, host);        // bold, slow spine
+    }
+
+    // Dog laterals per row (flow toward the spine join)
+    L.rows.forEach((r) => {
+      const join = w(0.5, r.rowY);
+      const pts = r.turbines.map((t) => w(t.x, t.y)).concat([join]).sort((a, b) => a.x - b.x);
+      if (r.energized) {
+        host.add(staticLine(pts, dogHex, false));
+        // order so flow runs from the far end inward to the join
+        const ordered = pts.slice().sort((a, b) => Math.abs(b.x - join.x) - Math.abs(a.x - join.x));
+        addPulses(makePath(ordered.concat([join])), dogHex, 0.85, 1.6, host);   // fine, quick laterals
+      } else {
+        host.add(staticLine(pts, 0x6b5a36, true));
+      }
+    });
+  }
+
+  function addPulses(path, color, size, speed, host) {
+    const n = Math.max(1, Math.round(path.length / (color === 0xf5a623 ? 42 : 34)));
+    const geo = new THREE.SphereGeometry(size, 8, 8);
+    const markers = [];
+    for (let i = 0; i < n; i++) {
+      const m = new THREE.Mesh(geo, pulseMaterial(color));
+      m.userData.t = i / n;                                  // evenly spaced phases along the line
+      host.add(m);
+      markers.push(m);
+    }
+    feeders.push({ path: path, markers: markers, speed: speed, color: color });
+  }
+
+  function updateFeeders(dt) {
+    for (let f = 0; f < feeders.length; f++) {
+      const fd = feeders[f];
+      for (let i = 0; i < fd.markers.length; i++) {
+        const m = fd.markers[i];
+        m.userData.t = (m.userData.t + dt * fd.speed * 0.005) % 1;
+        const p = fd.path.at(m.userData.t);
+        m.position.copy(p);
+      }
+    }
+  }
+
+  /* ---------------- substation ---------------- */
+  function buildSubstation(L, host) {
+    const sub = w(L.sub.x, L.sub.y);
+    const sg = new THREE.Group(); sg.position.set(sub.x, 0, sub.z);
+    const padMat = new THREE.MeshStandardMaterial({ color: 0x55524c, roughness: 0.8, metalness: 0.2 });
+    const steel = new THREE.MeshStandardMaterial({ color: 0x8a8f96, roughness: 0.5, metalness: 0.6 });
+    const pad = new THREE.Mesh(new THREE.BoxGeometry(26, 0.6, 18), padMat); pad.position.y = 0.3; sg.add(pad);
+    for (let i = 0; i < 3; i++) {
+      const tr = new THREE.Mesh(new THREE.BoxGeometry(3.4, 5, 3.4), steel);
+      tr.position.set(-7 + i * 7, 2.9, 0); sg.add(tr);
+      const bush = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, 3, 8), steel);
+      bush.position.set(-7 + i * 7, 6, 0); sg.add(bush);
+    }
+    // gantry posts
+    for (let i = 0; i < 4; i++) {
+      const post = new THREE.Mesh(new THREE.BoxGeometry(0.5, 9, 0.5), steel);
+      post.position.set(-10 + i * 6.6, 4.5, -7); sg.add(post);
+    }
+    const live = window.App.STATUS[project.substation.status].color;
+    const beacon = new THREE.Mesh(new THREE.BoxGeometry(1.4, 7, 1.4),
+      new THREE.MeshStandardMaterial({ color: 0x2dd4bf, emissive: new THREE.Color(live), emissiveIntensity: 1.0, roughness: 0.4 }));
+    beacon.position.set(10, 4.2, -6); sg.add(beacon);
+    const pl = new THREE.PointLight(new THREE.Color(live), 1.3, 150); pl.position.set(10, 11, -6); sg.add(pl);
+    host.add(sg);
+  }
+
+  /* ---------------- build the whole scene ---------------- */
   function buildScene(p) {
     const A = window.App, L = A.layout(p);
     if (contentGroup) scene.remove(contentGroup);
     contentGroup = new THREE.Group(); scene.add(contentGroup);
-    rotors = [];
+    contentGroup.add(buildTerrain());
 
-    // ground + grid
-    const ground = new THREE.Mesh(new THREE.PlaneGeometry(900, 900), mats.ground);
-    ground.rotation.x = -Math.PI / 2; contentGroup.add(ground);
-    const grid = new THREE.GridHelper(900, 90, 0x232a31, 0x1a2026);
-    grid.position.y = 0.02; contentGroup.add(grid);
-
-    const sub = w(L.sub.x, L.sub.y);
-
-    // turbines
+    // turbine spec from the shared layout
+    const turbines = [];
+    let wtg = 0;
     L.rows.forEach((r) => {
       r.turbines.forEach((t) => {
-        const pos = w(t.x, t.y);
-        const g = template.clone(true);
-        g.position.set(pos.x, 0, pos.z);
-        g.rotation.y = ((t.x * 7 + t.y * 11) % 1) * Math.PI - Math.PI / 2;
-        contentGroup.add(g);
-        rotors.push({ rotor: g.getObjectByName("rotor"), on: t.on });
+        const pos = w(t.x, t.y); wtg++;
+        const jit = ((t.x * 13.1 + t.y * 7.7) % 1) - 0.5;
+        turbines.push({ id: "WTG-" + String(wtg).padStart(2, "0"), x: pos.x, z: pos.z,
+          rotY: -0.2 + jit * 0.5, model: p.turbineModel, stage: t.stage });
       });
     });
 
-    // spine (Panther)
-    const rowsByY = L.rows.slice().sort((a, b) => a.rowY - b.rowY);
-    const topJoin = w(0.5, rowsByY[0].rowY);
-    contentGroup.add(lineFrom([sub, topJoin], 0x4a3a1c, true));
-    const trunkRows = L.rows.filter((r) => r.trunkLive);
-    if (trunkRows.length) {
-      const topTrunk = w(0.5, Math.min(...trunkRows.map((r) => r.rowY)));
-      contentGroup.add(lineFrom([sub, topTrunk], 0xf5a623, false));
-    }
+    farm = window.Turbine3D.buildFarm(THREE, { turbines: turbines });
+    contentGroup.add(farm.group);
+    rotors = farm.rotors; picks = farm.picks;
 
-    // laterals (Dog)
-    L.rows.forEach((r) => {
-      const join = w(0.5, r.rowY);
-      const pts = r.turbines.map((t) => w(t.x, t.y)).concat([join]).sort((a, b) => a.x - b.x);
-      contentGroup.add(lineFrom(pts, r.energized ? 0x5ab8e8 : 0x294452, !r.energized));
-    });
+    buildFeeders(L, contentGroup);
+    buildSubstation(L, contentGroup);
 
-    // substation
-    const sg = new THREE.Group(); sg.position.set(sub.x, 0, sub.z);
-    const pad = new THREE.Mesh(new THREE.BoxGeometry(22, 0.6, 16), mats.sub); pad.position.y = 0.3; sg.add(pad);
-    for (let i = 0; i < 3; i++) {
-      const tr = new THREE.Mesh(new THREE.BoxGeometry(3.2, 4.5, 3.2), mats.sub);
-      tr.position.set(-6 + i * 6, 2.6, 0); sg.add(tr);
-    }
-    const beacon = new THREE.Mesh(new THREE.BoxGeometry(1.4, 6, 1.4), mats.subGlow);
-    beacon.position.set(8, 3.6, -5); sg.add(beacon);
-    const pl = new THREE.PointLight(0x2dd4bf, 1.3, 140); pl.position.set(8, 9, -5); sg.add(pl);
-    contentGroup.add(sg);
+    // selection ring (hidden until a turbine is clicked)
+    selRing = new THREE.Mesh(new THREE.RingGeometry(3.4, 4.2, 28),
+      new THREE.MeshBasicMaterial({ color: 0x2dd4bf, side: THREE.DoubleSide, transparent: true, opacity: 0.0 }));
+    selRing.rotation.x = -Math.PI / 2; selRing.position.y = 0.2; contentGroup.add(selRing);
 
     return L;
   }
 
+  /* ---------------- controls ---------------- */
+  function bindControls() {
+    canvas.addEventListener("pointerdown", (e) => {
+      dragging = true; dragBtn = e.button; lastX = e.clientX; lastY = e.clientY; moved = 0;
+      canvas.setPointerCapture && canvas.setPointerCapture(e.pointerId);
+    });
+    canvas.addEventListener("pointermove", (e) => {
+      if (dragging) {
+        const dx = e.clientX - lastX, dy = e.clientY - lastY; lastX = e.clientX; lastY = e.clientY;
+        moved += Math.abs(dx) + Math.abs(dy);
+        orbit.auto = false;
+        if (dragBtn === 2 || e.shiftKey) pan(dx, dy); else rotate(dx, dy);
+      } else {
+        hover(e);
+      }
+    });
+    const up = (e) => {
+      if (dragging && moved < 6) clickPick(e);
+      dragging = false;
+    };
+    canvas.addEventListener("pointerup", up);
+    canvas.addEventListener("pointercancel", () => { dragging = false; });
+    canvas.addEventListener("wheel", (e) => {
+      e.preventDefault(); orbit.auto = false;
+      orbit.radius = Math.max(55, Math.min(460, orbit.radius * (1 + e.deltaY * 0.0012)));
+    }, { passive: false });
+    canvas.addEventListener("contextmenu", (e) => e.preventDefault());
+  }
+  function rotate(dx, dy) {
+    orbit.theta -= dx * 0.005;
+    orbit.phi = Math.max(0.16, Math.min(1.46, orbit.phi - dy * 0.005));
+  }
+  function pan(dx, dy) {
+    const s = orbit.radius * 0.0016;
+    // move target in camera's screen plane
+    const cx = Math.cos(orbit.theta), sx = Math.sin(orbit.theta);
+    orbit.tx -= (cx * dx) * s;  orbit.tz -= (sx * dx) * s;
+    orbit.ty = Math.max(0, Math.min(60, orbit.ty + dy * s));
+  }
+  function setNdc(e) {
+    const r = canvas.getBoundingClientRect();
+    ndc.x = ((e.clientX - r.left) / r.width) * 2 - 1;
+    ndc.y = -((e.clientY - r.top) / r.height) * 2 + 1;
+  }
+  function hover(e) {
+    if (!picks.length) return;
+    setNdc(e); ray.setFromCamera(ndc, camera);
+    const hit = ray.intersectObjects(picks, false)[0];
+    const id = hit ? hit.object.userData.turbineId : null;
+    if (id !== hoverId) { hoverId = id; canvas.style.cursor = id ? "pointer" : "default"; }
+  }
+  function clickPick(e) {
+    if (!picks.length) return;
+    setNdc(e); ray.setFromCamera(ndc, camera);
+    const hit = ray.intersectObjects(picks, false)[0];
+    if (hit) select(hit.object.userData.idx); else deselect();
+  }
+
+  function select(idx) {
+    const tg = farm.turbines[idx]; if (!tg) return;
+    const A = window.App, p = project, spec = A.D.turbines[p.turbineModel] || {};
+    const st = A.STAGE[tg.userData.stage];
+    selRing.position.set(tg.position.x, 0.2, tg.position.z);
+    selRing.material.opacity = 0.9; selRing.material.color.set(st.color);
+    inspectEl.innerHTML =
+      `<div class="ti-top"><b>${tg.userData.id}</b><span class="ti-x">✕</span></div>
+       <div class="ti-model">${p.turbineModel} · ${spec.mw} MW · ${spec.hub} m ${spec.tower === "HLT" ? "HLT" : "tubular"}</div>
+       <div class="ti-stage" style="color:${st.color}"><span class="dot" style="background:${st.color}"></span>Stage ${st.n} · ${st.label}</div>
+       <div class="ti-sub">${p.name}</div>`;
+    inspectEl.classList.add("show");
+    inspectEl.querySelector(".ti-x").addEventListener("click", deselect);
+  }
+  function deselect() {
+    if (selRing) selRing.material.opacity = 0.0;
+    inspectEl.classList.remove("show");
+  }
+
+  function resetView() { orbit.radius = 215; orbit.theta = 0.72; orbit.phi = 1.0; orbit.tx = 0; orbit.ty = 9; orbit.tz = 0; orbit.auto = true; }
+
+  /* ---------------- build-up sweep ---------------- */
+  function animateBuild() {
+    if (!farm || noMotion) return;
+    deselect();
+    building = 1.0;
+    // rise turbine groups from the ground, ordered by stage (early stages first)
+    const list = farm.turbines.slice().sort((a, b) => a.userData.stage - b.userData.stage);
+    list.forEach((tg) => { tg.scale.y = 0.001; });
+    if (farm.beams) { farm.beams.scale.y = 0.001; }
+    anime.animate(list.map((t) => t.scale), {
+      y: [0.001, 1], duration: 620, ease: "outBack",
+      delay: anime.stagger(26),
+    });
+    if (farm.beams) anime.animate(farm.beams.scale, { y: [0.001, 1], duration: 900, delay: 300, ease: "outCubic" });
+    // feeders flow-in: briefly hide then restore handled by pulses naturally
+  }
+
+  /* ---------------- camera + loop ---------------- */
+  function updateCamera() {
+    const sp = Math.sin(orbit.phi), cp = Math.cos(orbit.phi);
+    camera.position.set(
+      orbit.tx + orbit.radius * sp * Math.cos(orbit.theta),
+      orbit.ty + orbit.radius * cp,
+      orbit.tz + orbit.radius * sp * Math.sin(orbit.theta));
+    camera.lookAt(orbit.tx, orbit.ty, orbit.tz);
+  }
   function resize() {
     if (!renderer) return;
     const w2 = canvas.clientWidth || el.clientWidth, h2 = canvas.clientHeight || el.clientHeight;
@@ -140,57 +328,85 @@
     renderer.setSize(w2, h2, false);
     camera.aspect = w2 / h2; camera.updateProjectionMatrix();
   }
-
   function tick() {
     raf = requestAnimationFrame(tick);
+    const dt = 1;
     clock += 0.016;
-    rotors.forEach((r) => { if (r.rotor) r.rotor.rotation.z += r.on ? 0.06 : 0.004; });
-    const a = clock * 0.06, rad = 215;
-    camera.position.set(Math.cos(a) * rad, 78 + Math.sin(clock * 0.3) * 7, Math.sin(a) * rad);
-    camera.lookAt(0, 16, 0);
+    if (orbit.auto) orbit.theta += 0.0016;                  // gentle auto-orbit until the user grabs it
+    for (let i = 0; i < rotors.length; i++) {
+      const r = rotors[i];
+      r.rotor.rotation.z -= r.spins ? 0.05 : 0.0;           // CLOCKWISE (front view)
+    }
+    updateFeeders(dt);
+    updateCamera();
     renderer.render(scene, camera);
   }
 
+  /* ---------------- HUD ---------------- */
+  function buildLegend() {
+    const A = window.App;
+    const chips = [];
+    for (let s = 1; s <= 7; s++) {
+      const st = A.STAGE[s];
+      chips.push(`<span class="lg"><span class="dot" style="background:${st.color}"></span>${st.short}</span>`);
+    }
+    legendEl.innerHTML = `<span class="lg-title">EPC stage</span>` + chips.join("");
+  }
   function setHud(p, L) {
     const A = window.App, t = A.lineTotals(p);
     el.querySelector("#farm-name").textContent = p.name;
-    el.querySelector("#farm-sub").textContent = `${p.district}, ${p.state} · ${p.turbineModel}`;
+    el.querySelector("#farm-sub").textContent = `${p.district}, ${p.state} · ${p.turbineModel} · ${A.D.turbines[p.turbineModel].hub} m hub`;
     el.querySelector("#farm-stats").innerHTML =
       `<div><div class="h">${A.fmt.mw(p.capacityMW)}</div><div class="l">Capacity</div></div>
        <div><div class="h">${L.shown}<span style="color:#6c727a;font-size:13px"> / ${L.total}</span></div><div class="l">Turbines</div></div>
        <div><div class="h">${A.fmt.pct(p.progressPct)}</div><div class="l">Evac ready</div></div>`;
-    el.querySelector("#farm-cap").textContent = `showing ${L.shown} of ${L.total} turbines · auto-orbit · ${A.fmt.int(t.len)} km of 33kV line`;
+    el.querySelector("#farm-cap").textContent =
+      `${p.turbineModel === "S144" ? "Hybrid Lattice Tower" : "tubular tower"} · drag to orbit · scroll to zoom · click a turbine · showing ${L.shown} of ${L.total}`;
     el.querySelector("#farm-nav").innerHTML =
-      `<button class="iconbtn" onclick="App.go('#/project/${p.id}')">← Project</button>
-       <button class="iconbtn" onclick="App.go('#/')">India map</button>`;
+      `<button class="iconbtn" id="fb-build">↻ Build-up</button>
+       <button class="iconbtn" id="fb-reset">⟲ View</button>
+       <button class="iconbtn" onclick="App.go('#/project/${p.id}')">← Project</button>`;
+    el.querySelector("#fb-build").addEventListener("click", animateBuild);
+    el.querySelector("#fb-reset").addEventListener("click", resetView);
+    buildLegend();
   }
 
+  /* ---------------- lifecycle ---------------- */
   function init() {
     el = document.getElementById("farm-view");
     canvas = el.querySelector("#gl");
     fallback = el.querySelector("#farm-fallback");
+    legendEl = document.createElement("div"); legendEl.className = "farm-legend hud"; legendEl.id = "farm-legend";
+    inspectEl = document.createElement("div"); inspectEl.className = "farm-inspect"; inspectEl.id = "farm-inspect";
+    el.appendChild(legendEl); el.appendChild(inspectEl);
   }
   function show(ctx) {
     if (!ctx.project) return;
-    const p = ctx.project;
+    project = ctx.project;
+    const p = project;
     if (!hasWebGL()) {
       fallback.style.display = "flex"; canvas.style.display = "none";
       const L = window.App.layout(p); setHud(p, L); return;
     }
     fallback.style.display = "none"; canvas.style.display = "block";
     if (!started) setup();
+    deselect();
     const L = buildScene(p);
     setHud(p, L);
+    resetView();
     resize();
     if (noMotion) {
-      camera.position.set(150, 90, 215); camera.lookAt(0, 16, 0);
-      rotors.forEach((r) => { if (r.rotor) r.rotor.rotation.z = 0.5; });
-      renderer.render(scene, camera);
-    } else if (!raf) tick();
+      orbit.auto = false; updateCamera();
+      rotors.forEach((r) => { if (r.rotor) r.rotor.rotation.z = 0.4; });
+      updateFeeders(0); renderer.render(scene, camera);
+    } else {
+      if (!raf) tick();
+      animateBuild();
+    }
   }
-  function hide() { if (raf) { cancelAnimationFrame(raf); raf = null; } }
+  function hide() { if (raf) { cancelAnimationFrame(raf); raf = null; } deselect(); }
 
-  const view = { init, show, hide };
+  const view = { init: init, show: show, hide: hide };
   Object.defineProperty(view, "el", { get: () => el });
   window.App.register("farm", view);
 })();

@@ -47,7 +47,7 @@
     gPins.setAttribute("id", "pins");
     A.D.projects.forEach((p) => {
       const pt = A.projectLonLat(p.lon, p.lat);
-      const col = A.STATUS[p.status].color;
+      const col = A.rampColor(A.stageWeighted(p));     // stage-weighted execution progress
       const r = pinRadius(p);
       const g = document.createElementNS(SVGNS, "g");
       g.setAttribute("class", "pin" + (p.status === "construction" ? " pulse" : ""));
@@ -72,17 +72,29 @@
   }
 
   function applyFilter() {
-    const pins = svg.querySelectorAll(".pin");
-    pins.forEach((g) => {
-      const p = window.App.projectById(g.dataset.id);
-      g.classList.toggle("dim", !passes(p));
+    const A = window.App, cond = filter.conductor;
+    svg.querySelectorAll(".pin").forEach((g) => {
+      const p = A.projectById(g.dataset.id);
+      const ok = passes(p);
+      g.classList.toggle("dim", !ok);
+      // conductor pulse: emphasize pins with active (unfinished) work on the selected conductor
+      let pulse = false;
+      if (cond !== "All" && ok) {
+        const c = cond === "Dog" ? A.lineTotals(p).dog : A.lineTotals(p).pan;
+        pulse = c.len > 0 && c.strung < c.len;
+      }
+      g.classList.toggle("cond-pulse", pulse);
+      if (pulse) g.style.setProperty("--cond", A.COND[cond]);
     });
     renderSidebar();
   }
 
   /* ---------- flyout ---------- */
   function showFlyout(p, e) {
-    const A = window.App, st = A.STATUS[p.status], t = A.lineTotals(p);
+    const A = window.App, st = A.STATUS[p.status], t = A.lineTotals(p), L = A.layout(p);
+    const maxH = Math.max.apply(null, L.stageHist.slice(1).concat([1]));
+    const hist = L.stageHist.slice(1).map((c, i) =>
+      `<span class="sh" title="${A.STAGE[i + 1].label}: ${c}" style="height:${3 + (c / maxH) * 20}px;background:${A.STAGE[i + 1].color};opacity:${c ? 1 : 0.22}"></span>`).join("");
     flyout.innerHTML =
       `<div class="fo-name">${p.name}</div>
        <div class="fo-loc">${p.district}, ${p.state} · ${p.turbineModel} · ${A.turbineCount(p)} WTG</div>
@@ -93,6 +105,10 @@
        <div class="fo-bar">
          <div class="bar-label"><span>Evacuation ready</span><b>${A.fmt.pct(p.progressPct)}</b></div>
          <div class="bar"><i style="width:${p.progressPct}%;background:${st.color}"></i></div>
+       </div>
+       <div class="fo-hist-wrap">
+         <div class="fo-hist-lab">Per-turbine EPC stage · ${L.total} WTG</div>
+         <div class="fo-hist">${hist}</div>
        </div>
        <div class="fo-status" style="margin-top:12px;color:${st.color}"><span class="dot" style="background:${st.color}"></span>${st.label}</div>
        <div class="fo-hint">Click to open project →</div>`;
@@ -151,7 +167,9 @@
            <select class="fl-select" id="sel-state">${stateOpts}</select></div>
        </div>
        <div class="legend">
-         <div class="fl-title" style="margin-bottom:8px">Status legend</div>
+         <div class="fl-title" style="margin-bottom:8px">Execution stage · pin color</div>
+         <div class="stage-ramp"><i></i><div class="sr-lab"><span>RFO</span><span>Erection</span><span>Live</span></div></div>
+         <div class="fl-title" style="margin:15px 0 8px">Status · filter</div>
          ${Object.values(A.STATUS).map((s) => `<div class="lg-row"><span class="dot" style="background:${s.color}"></span>${s.label}</div>`).join("")}
          <div class="disclaimer">Unofficial concept lab — not affiliated with Suzlon Energy Ltd. Indicative demo data on real site locations & public specs.</div>
        </div>`;
@@ -168,6 +186,24 @@
     sidebar.querySelector("#sel-state").addEventListener("change", (e) => { filter.state = e.target.value; applyFilter(); });
   }
 
+  /* ---------- public control surface (used by the agent) ---------- */
+  function setFilters(o) {
+    o = o || {};
+    if (o.status != null) {
+      const arr = Array.isArray(o.status) ? o.status : [o.status];
+      const valid = arr.filter((s) => window.App.STATUS[s]);
+      if (valid.length) filter.status = new Set(valid);
+    }
+    if (o.conductor && ["All", "Dog", "Panther"].indexOf(o.conductor) >= 0) filter.conductor = o.conductor;
+    if (o.state != null) filter.state = o.state;
+    applyFilter();
+    return getFilters();
+  }
+  function getFilters() {
+    return { status: Array.from(filter.status), conductor: filter.conductor, state: filter.state,
+             visible: window.App.D.projects.filter(passes).length };
+  }
+
   /* ---------- lifecycle ---------- */
   function init() {
     el = document.getElementById("map-view");
@@ -176,6 +212,7 @@
     sidebar = el.querySelector(".map-sidebar");
     buildMap();
     renderSidebar();
+    window.App.mapControls = { setFilters: setFilters, getFilters: getFilters };
   }
   function show() { applyFilter(); }
 

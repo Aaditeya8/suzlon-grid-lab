@@ -3,7 +3,7 @@
   "use strict";
   const SVGNS = "http://www.w3.org/2000/svg";
   const VB = 1000, padL = 84, padR = 84, padT = 64, padB = 52;
-  let el, svg, panel, legend, cap;
+  let el, svg, panel, legend, cap, pipelineEl;
   const noMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
   function mapPt(nx, ny) {
@@ -12,17 +12,27 @@
   function pathOf(pts) { return "M" + pts.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" L"); }
   function mkpath(cls, d) { const p = document.createElementNS(SVGNS, "path"); p.setAttribute("class", cls); p.setAttribute("d", d); return p; }
 
-  function turbineGlyph(x, y, on) {
-    const g = document.createElementNS(SVGNS, "g");
-    g.setAttribute("class", "turbine-mark" + (on ? "" : " off"));
-    const hy = y - 13, L = 9;
-    const post = document.createElementNS(SVGNS, "line");
-    post.setAttribute("class", "post"); post.setAttribute("x1", x); post.setAttribute("y1", y); post.setAttribute("x2", x); post.setAttribute("y2", hy);
-    const blades = document.createElementNS(SVGNS, "path");
-    blades.setAttribute("class", "blade");
-    blades.setAttribute("d", `M${x},${hy - L} L${x},${hy} M${x},${hy} L${x - L * 0.87},${hy + L * 0.5} M${x},${hy} L${x + L * 0.87},${hy + L * 0.5}`);
-    g.append(post, blades);
-    return g;
+  // glyph coloured by EPC stage: a turbine once erected (stage ≥ 5), else a site node
+  function siteGlyph(x, y, stage) {
+    const col = window.App.STAGE[stage].color;
+    if (stage >= 5) {
+      const g = document.createElementNS(SVGNS, "g");
+      g.setAttribute("class", "turbine-mark");
+      const hy = y - 13, L = 9;
+      const post = document.createElementNS(SVGNS, "line");
+      post.setAttribute("x1", x); post.setAttribute("y1", y); post.setAttribute("x2", x); post.setAttribute("y2", hy);
+      post.setAttribute("stroke", col); post.setAttribute("stroke-width", 1.4);
+      const blades = document.createElementNS(SVGNS, "path");
+      blades.setAttribute("d", `M${x},${hy - L} L${x},${hy} M${x},${hy} L${x - L * 0.87},${hy + L * 0.5} M${x},${hy} L${x + L * 0.87},${hy + L * 0.5}`);
+      blades.setAttribute("stroke", col); blades.setAttribute("stroke-width", 1.4); blades.setAttribute("fill", "none");
+      g.append(post, blades);
+      return g;
+    }
+    const c = document.createElementNS(SVGNS, "circle");           // pre-erection site node
+    c.setAttribute("class", "site-node");
+    c.setAttribute("cx", x); c.setAttribute("cy", y); c.setAttribute("r", 2 + stage * 0.5);
+    c.setAttribute("fill", col); c.setAttribute("opacity", 0.9);
+    return c;
   }
 
   function buildSchematic(p) {
@@ -43,7 +53,7 @@
     const trunkRows = L.rows.filter((r) => r.trunkLive);
     if (trunkRows.length) {
       const topTrunkY = mapPt(0.5, Math.min(...trunkRows.map((r) => r.rowY))).y;
-      const solidSpine = mkpath("feeder panther", pathOf([{ x: subP.x, y: subP.y }, { x: subP.x, y: topTrunkY }]));
+      const solidSpine = mkpath("feeder panther flow", pathOf([{ x: subP.x, y: subP.y }, { x: subP.x, y: topTrunkY }]));
       svg.appendChild(solidSpine);
     }
 
@@ -53,14 +63,14 @@
       const join = mapPt(0.5, r.rowY);
       const pts = r.turbines.map((t) => mapPt(t.x, t.y)).concat([join]).sort((a, b) => a.x - b.x);
       svg.appendChild(mkpath("feeder dog ghost", pathOf(pts)));
-      if (r.energized) svg.appendChild(mkpath("feeder dog", pathOf(pts)));
+      if (r.energized) svg.appendChild(mkpath("feeder dog flow", pathOf(pts)));
       const node = document.createElementNS(SVGNS, "circle");
       node.setAttribute("cx", join.x); node.setAttribute("cy", join.y); node.setAttribute("r", 2.4);
       node.setAttribute("fill", r.energized ? A.COND.Dog : "#3a3f45");
       svg.appendChild(node);
       r.turbines.forEach((t) => {
         const pt = mapPt(t.x, t.y);
-        const gl = turbineGlyph(pt.x, pt.y, t.on);
+        const gl = siteGlyph(pt.x, pt.y, t.stage);
         svg.appendChild(gl); turbGroups.push(gl);
       });
     });
@@ -78,25 +88,33 @@
     svg.appendChild(sg);
 
     legend.innerHTML =
-      `<div class="k"><i style="background:${A.COND.Panther}"></i>Panther spine (33kV)</div>
+      `<div class="k"><i style="background:${A.COND.Panther}"></i>Panther spine</div>
        <div class="k"><i style="background:${A.COND.Dog}"></i>Dog laterals</div>
+       <div class="k flow-key"><i></i>current flowing</div>
        <div class="k"><i style="background:#3a3f45"></i>Not yet strung</div>`;
     cap.textContent = `showing ${L.shown} of ${L.total} turbines · ${L.strings} feeder strings`;
+    renderPipeline(L);
 
-    // intro animation
+    // intro animation (feeders carry a continuous CSS current-flow; this just reveals the field)
     animate(turbGroups);
+  }
+
+  function renderPipeline(L) {
+    const A = window.App, steps = [];
+    for (let s = 1; s <= 7; s++) {
+      const st = A.STAGE[s], c = L.stageHist[s];
+      steps.push(
+        `<div class="pl-step ${c ? "on" : ""}" style="--c:${st.color}">
+           <div class="pl-dot"></div><div class="pl-n">${c}</div><div class="pl-lab">${st.short}</div>
+         </div>`);
+    }
+    pipelineEl.innerHTML = `<div class="pl-title">EPC pipeline · per turbine</div><div class="pl-row">${steps.join("")}</div>`;
   }
 
   function animate(turbGroups) {
     if (noMotion) return;
-    const solids = svg.querySelectorAll(".feeder:not(.ghost)");
-    solids.forEach((s, i) => {
-      const len = s.getTotalLength();
-      s.style.strokeDasharray = len; s.style.strokeDashoffset = len;
-      anime.animate(s, { strokeDashoffset: [len, 0], duration: 900, delay: 120 + i * 90, ease: "inOutQuad" });
-    });
     turbGroups.forEach((g) => { g.style.opacity = 0; });
-    anime.animate(turbGroups, { opacity: [0, 1], duration: 500, delay: anime.stagger(12, { start: 400 }), ease: "outQuad" });
+    anime.animate(turbGroups, { opacity: [0, 1], duration: 500, delay: anime.stagger(10, { start: 250 }), ease: "outQuad" });
     anime.animate(".sub-glow", { r: [40, 60], opacity: [0, 0.1], duration: 1200, ease: "outQuad" });
   }
 
@@ -162,6 +180,9 @@
     panel = el.querySelector("#proj-panel");
     legend = el.querySelector(".stage-legend");
     cap = el.querySelector(".stage-cap");
+    pipelineEl = document.createElement("div");
+    pipelineEl.className = "pipeline-tracker";
+    el.querySelector(".proj-stage").appendChild(pipelineEl);
   }
   function show(ctx) { if (!ctx.project) return; buildSchematic(ctx.project); buildPanel(ctx.project); }
 
