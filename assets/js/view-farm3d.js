@@ -86,11 +86,21 @@
   function staticLine(points, color, dashed) {
     const geo = new THREE.BufferGeometry().setFromPoints(points.map((p) => new THREE.Vector3(p.x, 0.4, p.z)));
     const mat = dashed
-      ? new THREE.LineDashedMaterial({ color: color, dashSize: 3, gapSize: 4, transparent: true, opacity: 0.32 })
-      : new THREE.LineBasicMaterial({ color: color, transparent: true, opacity: 0.5 });
+      ? new THREE.LineDashedMaterial({ color: color, dashSize: 3, gapSize: 4, transparent: true, opacity: 0.4 })
+      : new THREE.LineBasicMaterial({ color: color, transparent: true, opacity: 0.6 });
     const line = new THREE.Line(geo, mat);
     if (dashed) line.computeLineDistances();
     return line;
+  }
+
+  // energized feeders rendered as real-width tubes (unlit, full-bright) so the Dog/Panther
+  // current paths read clearly — 1px WebGL lines are nearly invisible on the desert floor.
+  function tubeLine(points, color, radius) {
+    const pts = points.map((p) => new THREE.Vector3(p.x, 0.5, p.z));
+    if (pts.length < 2) return new THREE.Group();
+    const curve = new THREE.CatmullRomCurve3(pts);
+    const geo = new THREE.TubeGeometry(curve, Math.max(12, pts.length * 4), radius, 7, false);
+    return new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color: color }));
   }
 
   function buildFeeders(L, host) {
@@ -106,8 +116,8 @@
     const trunkRows = L.rows.filter((r) => r.trunkLive);
     if (trunkRows.length) {
       const topTrunk = w(0.5, Math.min.apply(null, trunkRows.map((r) => r.rowY)));
-      host.add(staticLine([sub, topTrunk], panHex, false));
-      addPulses(makePath([topTrunk, sub]), panHex, 1.0, 0.7, host);        // bold, slow spine
+      host.add(tubeLine([sub, topTrunk], panHex, 0.62));                   // bold Panther spine
+      addPulses(makePath([topTrunk, sub]), panHex, 1.15, 0.7, host);       // bold, slow spine
     }
 
     // Dog laterals per row (flow toward the spine join)
@@ -115,10 +125,10 @@
       const join = w(0.5, r.rowY);
       const pts = r.turbines.map((t) => w(t.x, t.y)).concat([join]).sort((a, b) => a.x - b.x);
       if (r.energized) {
-        host.add(staticLine(pts, dogHex, false));
+        host.add(tubeLine(pts, dogHex, 0.36));                            // Dog lateral
         // order so flow runs from the far end inward to the join
         const ordered = pts.slice().sort((a, b) => Math.abs(b.x - join.x) - Math.abs(a.x - join.x));
-        addPulses(makePath(ordered.concat([join])), dogHex, 0.62, 1.2, host);   // fine, slow laterals
+        addPulses(makePath(ordered.concat([join])), dogHex, 0.72, 1.2, host);   // fine, slow laterals
       } else {
         host.add(staticLine(pts, 0x6b5a36, true));
       }
@@ -146,7 +156,7 @@
         m.userData.t = (m.userData.t + dt * fd.speed * 0.0026) % 1;
         const t = m.userData.t;
         m.position.copy(fd.path.at(t));
-        m.material.opacity = 0.8 * Math.sin(t * Math.PI);    // fade in/out — no harsh pop
+        m.material.opacity = 0.95 * Math.sin(t * Math.PI);   // fade in/out — no harsh pop
       }
     }
   }
@@ -363,14 +373,15 @@
   }
 
   /* ---------------- HUD ---------------- */
-  function buildLegend() {
+  function buildLegend(L) {
     const A = window.App;
     const chips = [];
     for (let s = 1; s <= 7; s++) {
       const st = A.STAGE[s];
       chips.push(`<span class="lg"><span class="dot" style="background:${st.color}"></span>${st.short}</span>`);
     }
-    legendEl.innerHTML = `<span class="lg-title">EPC stage</span>` + chips.join("");
+    legendEl.innerHTML = `<span class="lg-title">EPC stage</span>` + chips.join("") +
+      (L ? `<span class="lg-shown">showing ${L.shown}/${L.total}</span>` : "");
   }
   function setHud(p, L) {
     const A = window.App, t = A.lineTotals(p);
@@ -381,14 +392,14 @@
        <div><div class="h">${L.shown}<span style="color:#6c727a;font-size:13px"> / ${L.total}</span></div><div class="l">Turbines</div></div>
        <div><div class="h">${A.fmt.pct(p.progressPct)}</div><div class="l">Evac ready</div></div>`;
     el.querySelector("#farm-cap").textContent =
-      `${p.turbineModel === "S144" ? "Hybrid Lattice Tower" : "tubular tower"} · drag to orbit · scroll to zoom · click a turbine · showing ${L.shown} of ${L.total}`;
+      "drag to orbit · scroll to zoom · click a turbine";
     el.querySelector("#farm-nav").innerHTML =
       `<button class="iconbtn" id="fb-build">↻ Build-up</button>
        <button class="iconbtn" id="fb-reset">⟲ View</button>
        <button class="iconbtn" onclick="App.go('#/project/${p.id}')">← Project</button>`;
     el.querySelector("#fb-build").addEventListener("click", animateBuild);
     el.querySelector("#fb-reset").addEventListener("click", resetView);
-    buildLegend();
+    buildLegend(L);
   }
 
   /* ---------------- lifecycle ---------------- */

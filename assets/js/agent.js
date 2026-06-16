@@ -155,6 +155,18 @@
     ].join("\n\n");
   }
 
+  // where the user is RIGHT NOW (page-awareness) — also seeds lastProject so "this farm" works
+  function currentContextLine() {
+    const A = window.App;
+    const parts = (location.hash || "#/").replace(/^#\/?/, "").split("/").filter(Boolean);
+    if ((parts[0] === "project" || parts[0] === "farm") && parts[1]) {
+      const p = A.projectById(parts[1]);
+      if (p) { lastProject = p.id; return (parts[0] === "farm" ? "the 3D FARM scene for " : "the PROJECT schematic for ") + p.name + " (id " + p.id + ")"; }
+    }
+    if (parts[0] === "insights") return "the INSIGHTS analytics page";
+    return "the India MAP";
+  }
+
   // compact id→name index for the agent (it fetches details via tools, so no full data dump)
   function projectIndex() {
     return window.App.D.projects.map((p) => `${p.id} — ${p.name} (${p.state}, ${p.status}, ${p.turbineModel}, ${p.capacityMW} MW)`).join("\n");
@@ -168,13 +180,14 @@
     const A = window.App;
     const ctx = "Today is " + A.fmtDay(A.asOfDate()) + " (as-of " + A.D.meta.asOf + "). " +
       "Views: India MAP, a portfolio INSIGHTS page (capacity mix, EPC-stage funnel, inter-task latency, ageing, execution-timeline Gantt), a per-farm PROJECT schematic, and a 3D FARM scene. " +
-      "Domain: 18 wind farms; each turbine moves through 7 EPC stages (Release for Order → Land Acquisition → Foundation → Lattice Assembly → Erection → Pre-Commissioning → Commissioning). 'commissioned' = turbines erected but evacuation not yet live = STRANDED.";
+      "Domain: 18 wind farms; each turbine moves through 7 EPC stages (Release for Order → Land Acquisition → Foundation → Lattice Assembly → Erection → Pre-Commissioning → Commissioning). 'commissioned' = turbines erected but evacuation not yet live = STRANDED; 'energized' = fully done & exporting.";
+    const loc = "\n\nRIGHT NOW the user is looking at " + currentContextLine() + ". Use this for references like 'here', 'this farm/project', 'in 3D', or 'where am I'.";
     if (mode === "chat") {
-      return "You are the Grid Lab assistant — a sharp, friendly analyst of this Indian wind power-evacuation portfolio. " + ctx +
+      return "You are the Grid Lab assistant — a sharp, friendly analyst of this Indian wind power-evacuation portfolio. " + ctx + loc +
         " Answer directly, accurately and in depth from the data below; cite real numbers (MW, km, days, stages, dates). Interpret loose or misspelled project names charitably. You are in CHAT mode: you cannot operate the UI — if the user asks to see/filter/open/navigate something or wants the charts, briefly answer then suggest switching to Agent mode (or the Insights page). Keep it concise but substantive.\n\nKNOWLEDGE:\n" + knowledge();
     }
-    return "You are the Grid Lab agent: you both ANSWER and OPERATE the app via tools. " + ctx +
-      " Rules: (1) If the user wants to see/show/open/filter/navigate something, DO IT with a tool. navigate views: 'map', 'insights' (any 'show the analysis/charts/latency/ageing' request), 'project' ('open/take me to <farm>'), 'farm' ('…in 3D'). Use set_filters to filter the map. (2) Resolve farm names via the index below; tools fuzzy-match ids, and if a farm is already in context you may omit projectId ('take me there'). (3) For exact numbers call get_project (per-stage dates + latency + ageing) or portfolio_stats (totals, stranded, ageing) and synthesise — don't guess figures. (4) ALWAYS include a short natural-language reply alongside any tool call. Keep replies concise and concrete.\n\nPROJECT INDEX (id — name):\n" + projectIndex();
+    return "You are the Grid Lab agent: you both ANSWER and OPERATE the app via tools. " + ctx + loc +
+      " Rules: (1) If the user wants to see/show/open/filter/navigate something, DO IT with a tool. navigate views: 'map', 'insights' (any 'show the analysis/charts/latency/ageing' request), 'project' ('open/take me to <farm>'), 'farm' ('…in 3D' or 'show the 3D farm'). Use set_filters to filter the map. (2) When the user gives CRITERIA instead of a name (e.g. 'a fully commissioned/energized site', 'the biggest stranded farm'), pick a matching project from the index below yourself, then navigate to it. (3) Resolve farm names via the index; tools fuzzy-match ids, and if a farm is in context you may omit projectId ('take me there'). (4) For exact numbers call get_project or portfolio_stats and synthesise — don't guess. (5) ALWAYS include a short natural-language reply alongside any tool call. Keep replies concise and concrete.\n\nPROJECT INDEX (id — name):\n" + projectIndex();
   }
 
   /* ----------------------- groq streaming ----------------------- */

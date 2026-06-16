@@ -286,12 +286,13 @@ select.fl-select {
 /* ---- 3D farm: HUD legibility on the bright desert + legend + inspect ---- */
 #farm-view .hud-tl, #farm-view .hud-bl { background: rgba(12,14,17,0.5); border: 1px solid rgba(255,255,255,0.07);
   border-radius: 12px; padding: 11px 15px; backdrop-filter: blur(5px); }
-#farm-view .hud-br { background: rgba(12,14,17,0.5); border-radius: 9px; padding: 7px 11px; backdrop-filter: blur(4px); }
+#farm-view .hud-br { right: 22px; bottom: 74px; max-width: 320px; text-align: right; background: rgba(12,14,17,0.5); border-radius: 9px; padding: 7px 11px; backdrop-filter: blur(4px); }
 .farm-legend { left: 50%; transform: translateX(-50%); bottom: 18px; display: flex; align-items: center; gap: 11px;
   background: rgba(12,14,17,0.55); border: 1px solid rgba(255,255,255,0.08); border-radius: 20px; padding: 7px 15px; backdrop-filter: blur(5px); }
 .farm-legend .lg-title { font-family: var(--mono); font-size: 9px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--dim); }
 .farm-legend .lg { display: inline-flex; align-items: center; gap: 5px; font-size: 10px; color: var(--bone); }
 .farm-legend .lg .dot { width: 9px; height: 9px; border-radius: 50%; }
+.farm-legend .lg-shown { font-family: var(--mono); font-size: 9.5px; color: var(--dim); padding-left: 9px; margin-left: 3px; border-left: 1px solid var(--line-2); }
 
 .farm-inspect { position: absolute; right: 24px; top: 76px; width: 232px; pointer-events: none; opacity: 0; transform: translateY(-6px);
   background: rgba(12,14,17,0.82); border: 1px solid var(--line-2); border-radius: 12px; padding: 14px 15px;
