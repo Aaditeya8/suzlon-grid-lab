@@ -1,6 +1,6 @@
 # Suzlon Grid Lab — Handoff / Status
 
-**Updated:** 2026-06-16
+**Updated:** 2026-06-17
 **Project root:** `~/projects/suzlon-grid-lab`
 **One-liner:** Offline, no-build web tool that makes wind-farm **power-evacuation + EPC execution
 progress** visible across India — India map → project schematic → interactive 3D farm.
@@ -32,7 +32,7 @@ Run it: `cd ~/projects/suzlon-grid-lab && python3 -m http.server 8123` → http:
 |---|---|
 | **v1 — three-level tool** | **DONE.** Shipped, verified end-to-end via Playwright (no JS errors), committed to git (1st commit). |
 | **v2 — expansion spec** | **DONE.** Written & reviewed (the file above). |
-| **v2 — implementation** | **DONE (workstreams 1–6).** Built on branch `v2-expansion`, verified end-to-end via Playwright — zero console errors across map → project → 3D (S144 construction + S120 energized) → agent; tool backbones (set_filters / explain / portfolio_stats) confirmed driving the UI. Screenshots refreshed (`docs/screenshots/05–10`). **Only the J&K map regen (workstream 0) is deferred** — see below. |
+| **v2 — implementation** | **DONE (workstreams 1–6).** Built on branch `v2-expansion`, verified end-to-end via Playwright — zero console errors across map → project → 3D (S144 construction + S120 energized) → agent; tool backbones (set_filters / explain / portfolio_stats) confirmed driving the UI. Screenshots refreshed (`docs/screenshots/05–10`). **All seven workstreams (0–6) now complete** — full-J&K map regenerated 2026-06-17. |
 
 ### What v1 already does (working today)
 - **India map**: 18 real-located projects as pins, status colors, KPIs, status/conductor/state
@@ -92,9 +92,9 @@ chat UI), `⟳ view-farm3d.js` (rewrite), `~ app.js` (stage model + glossary), `
 - ✅ **4 3D farm** — `view-farm3d.js` rewritten: desert terrain, stage geometry (pad→foundation→partial-lattice+crane→erection→complete→spinning), clockwise rotors, custom orbit/zoom/pan, click-to-inspect, animated Dog/Panther ground-feeder pulses, build-up sweep.
 - ✅ **5 Stage + flow UI** — map pins on stage-weighted ramp + stage legend + flyout histogram + conductor pulse; project 7-step pipeline tracker + per-turbine stage colours + continuous feeder flow.
 - ✅ **6 Groq agent** — new `agent.js`: left dock, SSE streaming, Settings/localStorage key, tools (navigate/set_filters/list_projects/get_project/portfolio_stats/explain) that drive the UI. **Live LLM round-trip still needs a Groq key pasted in Settings** to verify (UI + tool backbones already confirmed).
-- ⏸️ **0 J&K map regen** — DEFERRED (only remaining item). No generator script exists in-repo, so it needs an India-claim-correct source + a from-scratch dissolve/simplify/project pipeline. Blocks nothing else.
+- ✅ **0 J&K map regen** — DONE (2026-06-17). `india-geo.js` regenerated from `udit-001/india-maps-data` (India-claim-correct): 759 districts dissolved → state outlines via shapely `unary_union`, simplified + projected with the same equirectangular transform (so pins still align). Full Jammu & Kashmir incl. PoK + Aksai Chin (J&K UT + Ladakh UT); bbox now reaches lat 37.4 (was 35.8). Verified in-browser — 0 console errors, pins correctly placed.
 
-**Next:** merge `v2-expansion`, paste a Groq key to smoke-test the agent live, then (optionally) tackle the J&K regen.
+**Next:** v2 stays on `v2-expansion` (kept as-is — `master` remains v1, per your call). Only open item: paste a Groq key in Settings (⚙) to smoke-test the agent's live LLM round-trip (UI + tool backbones already verified).
 
 ---
 
