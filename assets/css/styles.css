@@ -158,7 +158,7 @@ select.fl-select {
 #project-view { display: grid; grid-template-columns: 1fr 380px; }
 .proj-stage { position: relative; overflow: hidden; background:
   radial-gradient(110% 80% at 50% 0%, #16191d 0%, var(--ink) 70%); }
-#schematic { position: absolute; inset: 0; width: 100%; height: 100%; }
+#schematic { position: absolute; top: 0; left: 0; width: 100%; height: calc(100% - 84px); }
 #schematic .feeder { fill: none; stroke-linecap: round; stroke-linejoin: round; }
 #schematic .feeder.dog { stroke: var(--c-dog); }
 #schematic .feeder.panther { stroke: var(--c-panther); }
@@ -172,7 +172,7 @@ select.fl-select {
 .proj-stage .stage-legend { position: absolute; left: 24px; top: 20px; display: flex; gap: 18px; font-size: 11px; color: var(--dim); }
 .proj-stage .stage-legend .k { display: flex; align-items: center; gap: 7px; }
 .proj-stage .stage-legend .k i { width: 16px; height: 3px; border-radius: 2px; display: inline-block; }
-.proj-stage .stage-cap { position: absolute; right: 24px; bottom: 18px; font-family: var(--mono); font-size: 10px; color: var(--dim-2); letter-spacing: 0.1em; }
+.proj-stage .stage-cap { position: absolute; right: 24px; top: 22px; font-family: var(--mono); font-size: 10px; color: var(--dim-2); letter-spacing: 0.1em; }
 
 .proj-panel { border-left: 1px solid var(--line); background: var(--ink-2); padding: 24px 22px; overflow-y: auto; display: flex; flex-direction: column; gap: 20px; }
 .proj-panel .ph-status { display: inline-flex; align-items: center; gap: 7px; font-family: var(--mono); font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; }
@@ -260,8 +260,10 @@ select.fl-select {
 .proj-stage .stage-legend .k.flow-key i { background: linear-gradient(90deg, var(--c-panther), var(--c-dog)); }
 
 /* ---- project: 7-step EPC pipeline tracker ---- */
-.pipeline-tracker { position: absolute; left: 50%; transform: translateX(-50%); bottom: 44px;
-  display: flex; flex-direction: column; align-items: center; gap: 9px; pointer-events: none; }
+.pipeline-tracker { position: absolute; left: 0; right: 0; bottom: 0; height: 84px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px;
+  background: linear-gradient(180deg, rgba(24,27,31,0) 0%, var(--ink-2) 44%);
+  border-top: 1px solid var(--line); pointer-events: none; }
 .pl-title { font-family: var(--mono); font-size: 9px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--dim); }
 .pl-row { display: flex; align-items: flex-start; }
 .pl-step { position: relative; display: flex; flex-direction: column; align-items: center; gap: 5px; width: 64px; }

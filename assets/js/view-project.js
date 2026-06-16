@@ -2,12 +2,13 @@
 (function () {
   "use strict";
   const SVGNS = "http://www.w3.org/2000/svg";
-  const VB = 1000, padL = 84, padR = 84, padT = 64, padB = 52;
+  // landscape viewBox so the schematic fills wide stages (no big side letterbox)
+  const VBW = 1360, VBH = 1000, padL = 120, padR = 120, padT = 66, padB = 150;
   let el, svg, panel, legend, cap, pipelineEl;
   const noMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
   function mapPt(nx, ny) {
-    return { x: padL + nx * (VB - padL - padR), y: padT + ny * (VB - padT - padB) };
+    return { x: padL + nx * (VBW - padL - padR), y: padT + ny * (VBH - padT - padB) };
   }
   function pathOf(pts) { return "M" + pts.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" L"); }
   function mkpath(cls, d) { const p = document.createElementNS(SVGNS, "path"); p.setAttribute("class", cls); p.setAttribute("d", d); return p; }
@@ -37,7 +38,7 @@
 
   function buildSchematic(p) {
     const A = window.App, L = A.layout(p);
-    svg.setAttribute("viewBox", `0 0 ${VB} ${VB}`);
+    svg.setAttribute("viewBox", `0 0 ${VBW} ${VBH}`);
     svg.innerHTML = "";
     const subP = mapPt(L.sub.x, L.sub.y);
 

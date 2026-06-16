@@ -12,7 +12,7 @@
   const noMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
   // ---- orbit camera state ----
-  const orbit = { radius: 215, theta: 0.72, phi: 1.0, tx: 0, ty: 9, tz: 0, auto: true };
+  const orbit = { radius: 158, theta: 0.7, phi: 1.16, tx: 0, ty: 13, tz: 0, auto: true };
   let dragging = false, dragBtn = 0, lastX = 0, lastY = 0, moved = 0;
   let ray, ndc, hoverId = null;
 
@@ -29,14 +29,14 @@
     renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     scene = new THREE.Scene();
-    const haze = 0xcdb286;                                   // hazy Thar sky / dust
+    const haze = 0xada086;                                   // muted warm dust — far less saturated
     scene.background = new THREE.Color(haze);
-    scene.fog = new THREE.Fog(haze, 180, 640);
-    camera = new THREE.PerspectiveCamera(48, 1, 0.5, 3000);
-    scene.add(new THREE.HemisphereLight(0xf2e4c4, 0x6e5028, 0.62));
-    sun = new THREE.DirectionalLight(0xfff1d6, 1.55);
-    sun.position.set(-120, 130, 60); scene.add(sun);
-    scene.add(new THREE.AmbientLight(0x5a4a33, 0.32));
+    scene.fog = new THREE.Fog(haze, 120, 520);
+    camera = new THREE.PerspectiveCamera(46, 1, 0.5, 3000);
+    scene.add(new THREE.HemisphereLight(0xe4dac2, 0x5f4d34, 0.5));
+    sun = new THREE.DirectionalLight(0xffe7c4, 1.1);
+    sun.position.set(-110, 120, 72); scene.add(sun);
+    scene.add(new THREE.AmbientLight(0x463d2e, 0.28));
     ray = new THREE.Raycaster(); ndc = new THREE.Vector2();
     bindControls();
     started = true;
@@ -46,11 +46,11 @@
   function buildTerrain() {
     const g = new THREE.Group();
     const ground = new THREE.Mesh(new THREE.PlaneGeometry(2400, 2400),
-      new THREE.MeshStandardMaterial({ color: 0xb08a52, roughness: 1, metalness: 0 }));
+      new THREE.MeshStandardMaterial({ color: 0x97875f, roughness: 1, metalness: 0 }));
     ground.rotation.x = -Math.PI / 2; ground.position.y = 0; g.add(ground);
-    // faint hard-pan grid for scale
-    const grid = new THREE.GridHelper(FIELD * 2.2, 44, 0x8f6f40, 0xa07f4c);
-    grid.material.opacity = 0.22; grid.material.transparent = true; grid.position.y = 0.03; g.add(grid);
+    // very faint hard-pan grid for scale
+    const grid = new THREE.GridHelper(FIELD * 2.2, 44, 0x83714c, 0x8c7a54);
+    grid.material.opacity = 0.12; grid.material.transparent = true; grid.position.y = 0.03; g.add(grid);
     // sparse desert scrub (deterministic)
     scrub = [];
     const rnd = window.App.mulberry32(99);
@@ -86,17 +86,11 @@
   function staticLine(points, color, dashed) {
     const geo = new THREE.BufferGeometry().setFromPoints(points.map((p) => new THREE.Vector3(p.x, 0.4, p.z)));
     const mat = dashed
-      ? new THREE.LineDashedMaterial({ color: color, dashSize: 3, gapSize: 4, transparent: true, opacity: 0.5 })
-      : new THREE.LineBasicMaterial({ color: color, transparent: true, opacity: 0.9 });
+      ? new THREE.LineDashedMaterial({ color: color, dashSize: 3, gapSize: 4, transparent: true, opacity: 0.32 })
+      : new THREE.LineBasicMaterial({ color: color, transparent: true, opacity: 0.5 });
     const line = new THREE.Line(geo, mat);
     if (dashed) line.computeLineDistances();
     return line;
-  }
-
-  const pulseMat = {};
-  function pulseMaterial(color) {
-    if (!pulseMat[color]) pulseMat[color] = new THREE.MeshBasicMaterial({ color: color });
-    return pulseMat[color];
   }
 
   function buildFeeders(L, host) {
@@ -113,7 +107,7 @@
     if (trunkRows.length) {
       const topTrunk = w(0.5, Math.min.apply(null, trunkRows.map((r) => r.rowY)));
       host.add(staticLine([sub, topTrunk], panHex, false));
-      addPulses(makePath([topTrunk, sub]), panHex, 1.3, 0.8, host);        // bold, slow spine
+      addPulses(makePath([topTrunk, sub]), panHex, 1.0, 0.7, host);        // bold, slow spine
     }
 
     // Dog laterals per row (flow toward the spine join)
@@ -124,7 +118,7 @@
         host.add(staticLine(pts, dogHex, false));
         // order so flow runs from the far end inward to the join
         const ordered = pts.slice().sort((a, b) => Math.abs(b.x - join.x) - Math.abs(a.x - join.x));
-        addPulses(makePath(ordered.concat([join])), dogHex, 0.85, 1.6, host);   // fine, quick laterals
+        addPulses(makePath(ordered.concat([join])), dogHex, 0.62, 1.2, host);   // fine, slow laterals
       } else {
         host.add(staticLine(pts, 0x6b5a36, true));
       }
@@ -132,16 +126,16 @@
   }
 
   function addPulses(path, color, size, speed, host) {
-    const n = Math.max(1, Math.round(path.length / (color === 0xf5a623 ? 42 : 34)));
-    const geo = new THREE.SphereGeometry(size, 8, 8);
+    const n = Math.max(1, Math.round(path.length / 120));    // sparse — a calm pulse, not a swarm
     const markers = [];
     for (let i = 0; i < n; i++) {
-      const m = new THREE.Mesh(geo, pulseMaterial(color));
-      m.userData.t = i / n;                                  // evenly spaced phases along the line
+      const m = new THREE.Mesh(new THREE.SphereGeometry(size, 10, 10),
+        new THREE.MeshBasicMaterial({ color: color, transparent: true, opacity: 0 }));
+      m.userData.t = (i + 0.5) / n;
       host.add(m);
       markers.push(m);
     }
-    feeders.push({ path: path, markers: markers, speed: speed, color: color });
+    feeders.push({ path: path, markers: markers, speed: speed });
   }
 
   function updateFeeders(dt) {
@@ -149,9 +143,10 @@
       const fd = feeders[f];
       for (let i = 0; i < fd.markers.length; i++) {
         const m = fd.markers[i];
-        m.userData.t = (m.userData.t + dt * fd.speed * 0.005) % 1;
-        const p = fd.path.at(m.userData.t);
-        m.position.copy(p);
+        m.userData.t = (m.userData.t + dt * fd.speed * 0.0026) % 1;
+        const t = m.userData.t;
+        m.position.copy(fd.path.at(t));
+        m.material.opacity = 0.8 * Math.sin(t * Math.PI);    // fade in/out — no harsh pop
       }
     }
   }
@@ -293,7 +288,7 @@
     inspectEl.classList.remove("show");
   }
 
-  function resetView() { orbit.radius = 215; orbit.theta = 0.72; orbit.phi = 1.0; orbit.tx = 0; orbit.ty = 9; orbit.tz = 0; orbit.auto = true; }
+  function resetView() { orbit.radius = 158; orbit.theta = 0.7; orbit.phi = 1.16; orbit.tx = 0; orbit.ty = 13; orbit.tz = 0; orbit.auto = true; }
 
   /* ---------------- build-up sweep ---------------- */
   function animateBuild() {
