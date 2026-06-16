@@ -411,18 +411,22 @@
     fallback.style.display = "none"; canvas.style.display = "block";
     if (!started) setup();
     deselect();
-    const L = buildScene(p);
-    setHud(p, L);
-    resetView();
-    resize();
-    if (noMotion) {
-      orbit.auto = false; updateCamera();
-      rotors.forEach((r) => { if (r.rotor) r.rotor.rotation.z = 0.4; });
-      updateFeeders(0); renderer.render(scene, camera);
-    } else {
-      if (!raf) tick();
-      animateBuild();
-    }
+    // Load the GLB rotor once (cached across visits), THEN build — so turbines always have blades.
+    window.Turbine3D.loadRotor(THREE, "assets/turbine/turbine.glb").then(function () {
+      if (project !== p) return;                              // user navigated away during the load
+      const L = buildScene(p);
+      setHud(p, L);
+      resetView();
+      resize();
+      if (noMotion) {
+        orbit.auto = false; updateCamera();
+        rotors.forEach((r) => { if (r.rotor) r.rotor.rotation.z = 0.4; });
+        updateFeeders(0); renderer.render(scene, camera);
+      } else {
+        if (!raf) tick();
+        animateBuild();
+      }
+    });
   }
   function hide() { if (raf) { cancelAnimationFrame(raf); raf = null; } deselect(); }
 

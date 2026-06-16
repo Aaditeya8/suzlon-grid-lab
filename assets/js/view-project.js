@@ -122,6 +122,23 @@
   function buildPanel(p) {
     const A = window.App, st = A.STATUS[p.status], t = A.lineTotals(p), s = p.substation, ss = A.STATUS[s.status];
     const tm = A.D.turbines[p.turbineModel];
+    const tl = A.stageTimeline(p);
+
+    // execution timeline — a finished date per EPC stage (age / projected if not done)
+    const tlRows = tl.stages.slice(1).map((sg) => {
+      let when;
+      if (sg.status === "done") when = `<span class="tl-done">${A.fmtMonth(sg.date)}</span>${sg.latencyDays != null ? `<span class="tl-lat">${sg.latencyDays}d</span>` : ""}`;
+      else if (sg.status === "active") { const b = A.ageBucket(sg.ageDays); when = `<span class="tl-active" style="color:${b.color}">in progress · ${sg.ageDays}d</span>`; }
+      else when = `<span class="tl-proj">~${A.fmtMonth(sg.date)}</span>`;
+      return `<div class="tl-row ${sg.status}"><span class="tl-dot" style="background:${sg.color}"></span><span class="tl-lab">${sg.label}</span><span class="tl-when">${when}</span></div>`;
+    }).join("");
+    const slip = tl.slipDays != null && tl.slipDays > 20 ? `<span class="tl-slip">+${tl.slipDays}d vs target</span>` : "";
+    const tlSection =
+      `<div>
+        <div class="section-title">Execution timeline</div>
+        <div class="tl-sum"><span>Start <b>${A.fmtMonth(tl.startDate)}</b></span><span>${tl.done ? "Commissioned" : "Projected"} <b>${A.fmtMonth(tl.etaDate)}</b></span>${slip}</div>
+        <div class="tl-list">${tlRows}</div>
+      </div>`;
     const towerLabel = tm.tower === "HLT" ? "140 m Hybrid Lattice Tower" : "tubular steel tower";
     const lineItems = p.lines.map((l) => {
       const c = A.COND[l.conductor], spec = A.D.conductors[l.conductor];
@@ -169,6 +186,7 @@
           </div>
         </div>
       </div>
+      ${tlSection}
       <div style="margin-top:auto;display:flex;flex-direction:column;gap:10px">
         <div class="wtg-badge">
           <div class="wtg-id">${p.turbineModel}</div>

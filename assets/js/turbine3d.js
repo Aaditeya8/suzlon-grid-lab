@@ -1,32 +1,90 @@
 /* turbine3d.js — procedural Suzlon turbines for the 3D farm, with per-EPC-stage geometry.
-   S144 = tall slender tubular tower on a SHORT open hybrid-lattice base (HLT); S120 = tubular.
+   S144 = tall slender tubular tower on a WIDE open hybrid-lattice base (HLT); S120 = tubular.
+   Rotor = the proven GLB rotor (blades + hub) from the sustainability hero
+   (assets/turbine/turbine.glb — "Wind Turbine" by Shivansh Singh, CC BY 4.0), loaded ONCE and
+   cloned per turbine (the clone shares geometry, so memory ≈ one rotor regardless of count).
    Every lattice beam across the whole farm is batched into ONE InstancedMesh (unit cylinder +
-   per-instance transform) so a dense farm stays at 60 fps.
+   per-instance transform); beam coords bake the turbine's world (x,z) so a dense farm doesn't
+   stack every lattice at the origin.
 
-   Turbine.buildFarm(THREE, { turbines:[{id,x,z,rotY,model,stage}] }) →
+   Turbine3D.loadRotor(THREE, url) → Promise (resolves the unit rotor prototype, or null on failure)
+   Turbine3D.buildFarm(THREE, { turbines:[{id,x,z,rotY,model,stage}] }) →
      { group, rotors:[{rotor,spins,idx,id}], picks:[mesh], turbines:[group], beams, beamCount, turbineCount, mats }
    Stage geometry: 1 survey stake · 2 cleared pad · 3 foundation + rebar · 4 partial base
-                   · 5 erection (nacelle + 2 blades) · 6 complete (static) · 7 live (spins). */
+                   · 5 erection (nacelle + rotor) · 6 complete (static) · 7 live (spins). */
 (function () {
   "use strict";
 
-  function makeBladeGeo(THREE) {
-    // tapered + twisted aerofoil slab; root at y=0, tip at y=1 (scale.y sets real length)
-    const geo = new THREE.BoxGeometry(0.92, 1, 0.2, 1, 14, 1);
-    geo.translate(0, 0.5, 0);
-    const pos = geo.attributes.position;
-    for (let i = 0; i < pos.count; i++) {
-      const x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i);
-      const chord = (0.42 + 0.9 * Math.min(1, y * 3.0)) * (1 - 0.84 * y);
-      const sx = (x / 0.92) * 0.92 * chord;
-      const sz = z * (1 - 0.62 * y), th = 0.42 * (1 - y);
-      pos.setX(i, sx * Math.cos(th) - sz * Math.sin(th));
-      pos.setZ(i, sx * Math.sin(th) + sz * Math.cos(th));
-    }
-    geo.computeVertexNormals();
-    return geo;
+  /* ----------------------- GLB rotor (loaded once, cloned per turbine) ----------------------- */
+  var rotorProto = null;      // THREE.Group: unit rotor (tip radius 1), hub at origin, spins about z
+  var _rotorPromise = null;
+
+  // Build a unit-rotor prototype from the GLB scene. The rotor node (matched by /blade/i) has its
+  // LOCAL ORIGIN authored at the hub pivot, so we keep that pivot at the prototype origin (do NOT
+  // re-centre on the bbox — a 3-blade fan's bbox centre is off the hub and would make it wobble),
+  // bake the parent chain's world quat+scale onto the clone, flatten the planar z-offset, and scale
+  // so the blade-tip radius == 1.
+  function buildRotorPrototype(THREE, gltfScene) {
+    var rotorNode = null;
+    gltfScene.traverse(function (o) {
+      if (o.isMesh && o.material) {
+        o.material = o.material.clone();          // detach so tweaks don't leak across clones
+        o.material.side = THREE.DoubleSide;
+        if ("metalness" in o.material) o.material.metalness = Math.min(o.material.metalness, 0.4);
+        if ("roughness" in o.material) o.material.roughness = Math.max(o.material.roughness, 0.4);
+      }
+      if (!rotorNode && o.name && /blade/i.test(o.name)) rotorNode = o;
+    });
+    if (!rotorNode) { console.error("Turbine3D: no /blade/ rotor node in GLB"); return null; }
+
+    gltfScene.updateWorldMatrix(true, true);
+    var rotorClone = rotorNode.clone(true);
+    var wp = new THREE.Vector3(), wq = new THREE.Quaternion(), ws = new THREE.Vector3();
+    rotorNode.matrixWorld.decompose(wp, wq, ws);
+    rotorClone.position.set(0, 0, 0);
+    rotorClone.quaternion.copy(wq);
+    rotorClone.scale.copy(ws);                    // hub pivot at origin; blade plane in x/y, thin in z
+    rotorClone.updateMatrix();
+
+    var pos = new THREE.Vector3(), maxR = 0, zSum = 0, zN = 0;
+    rotorClone.updateWorldMatrix(true, true);
+    rotorClone.traverse(function (o) {
+      if (!o.isMesh || !o.geometry) return;
+      var pa = o.geometry.attributes.position; if (!pa) return;
+      o.updateWorldMatrix(true, false);
+      for (var i = 0; i < pa.count; i++) {
+        pos.set(pa.getX(i), pa.getY(i), pa.getZ(i)).applyMatrix4(o.matrixWorld);
+        var rr = pos.x * pos.x + pos.y * pos.y; if (rr > maxR) maxR = rr;
+        zSum += pos.z; zN++;
+      }
+    });
+    var radius = Math.sqrt(maxR) || 1, zMid = zN ? zSum / zN : 0;
+
+    var inner = new THREE.Group(); inner.add(rotorClone); inner.position.z = -zMid;  // disc → z=0
+    var proto = new THREE.Group(); proto.add(inner); proto.scale.setScalar(1 / radius); // unit rotor
+    var wrap = new THREE.Group(); wrap.add(proto); wrap.userData.protoRadius = radius;
+    return wrap;
   }
 
+  // Load the GLB rotor once; cache the promise so repeat farm visits don't refetch. Resolves null
+  // (and logs) on any failure so the towers still render rotor-less rather than the farm breaking.
+  function loadRotor(THREE, url) {
+    if (_rotorPromise) return _rotorPromise;
+    url = url || "assets/turbine/turbine.glb";
+    _rotorPromise = new Promise(function (resolve) {
+      if (!THREE || !THREE.GLTFLoader) { console.warn("Turbine3D: GLTFLoader missing — rotors disabled"); resolve(null); return; }
+      new THREE.GLTFLoader().load(url, function (gltf) {
+        rotorProto = buildRotorPrototype(THREE, gltf.scene);
+        resolve(rotorProto);
+      }, undefined, function (err) {
+        console.error("Turbine3D: GLB rotor load failed:", err && err.message || err);
+        resolve(null);
+      });
+    });
+    return _rotorPromise;
+  }
+
+  /* ----------------------- farm builder ----------------------- */
   function buildFarm(THREE, opts) {
     const T = (opts && opts.turbines) || [];
     const group = new THREE.Group();
@@ -38,8 +96,6 @@
       orange:   new THREE.MeshStandardMaterial({ color: 0xdf6a36, metalness: 0.1, roughness: 0.6 }),
       trans:    new THREE.MeshStandardMaterial({ color: 0x8e949c, metalness: 0.45, roughness: 0.5 }),
       nacelle:  new THREE.MeshStandardMaterial({ color: 0xf0ede7, metalness: 0.16, roughness: 0.5 }),
-      blade:    new THREE.MeshStandardMaterial({ color: 0xf4f2ed, metalness: 0.06, roughness: 0.42 }),
-      hub:      new THREE.MeshStandardMaterial({ color: 0xcfd2d6, metalness: 0.32, roughness: 0.45 }),
       concrete: new THREE.MeshStandardMaterial({ color: 0x8f877a, metalness: 0.0, roughness: 1.0 }),
       pad:      new THREE.MeshStandardMaterial({ color: 0x9a8e74, metalness: 0.0, roughness: 1.0 }),
       rebar:    new THREE.MeshStandardMaterial({ color: 0x6b6256, metalness: 0.4, roughness: 0.7 }),
@@ -47,7 +103,6 @@
       flag:     new THREE.MeshStandardMaterial({ color: 0xdf6a36, metalness: 0.0, roughness: 0.9, side: THREE.DoubleSide }),
     };
 
-    const bladeGeo = makeBladeGeo(THREE);
     const beams = [];
     const rotors = [];
     const picks = [];
@@ -61,15 +116,18 @@
       beams.push({ p: new THREE.Vector3().addVectors(a, b).multiplyScalar(0.5), q, r, len });
     }
 
-    const LAT = 0.34;                                          // lattice base = bottom 34% of the tower
+    const LAT = 0.54;                                          // lattice base = bottom 54% of the tower
 
-    // ---- S144: short OPEN lattice base + tall dominant tubular tower ----
-    function buildHLT(tg, towerTop, upTo) {
-      const latH0 = towerTop * LAT, transH = 1.3;
-      const baseHalf = 1.7, topHalf = 0.62, legR = 0.16, braceR = 0.075, baysFull = 4;
+    // ---- S144: WIDE open hybrid-lattice base + transition cone + tall dominant tubular tower ----
+    // ox,oz = turbine world position, baked into every beam (the beams batch into ONE scene-root
+    // InstancedMesh, so without this every turbine's lattice would collapse onto the origin).
+    function buildHLT(tg, towerTop, upTo, ox, oz) {
+      const latH = towerTop * LAT, transH = towerTop * 0.05;
+      const baseHalf = towerTop * 0.135, topHalf = towerTop * 0.052;      // wide base → slender top
+      const legR = towerTop * 0.0049, braceR = towerTop * 0.0024, baysFull = 8;  // farm-scale beam radii
       const S = [[-1, -1], [1, -1], [1, 1], [-1, 1]];
       const halfAt = (f) => baseHalf + (topHalf - baseHalf) * f;
-      const corner = (sx, sz, f) => new THREE.Vector3(sx * halfAt(f), f * latH0, sz * halfAt(f));
+      const corner = (sx, sz, f) => new THREE.Vector3(ox + sx * halfAt(f), f * latH, oz + sz * halfAt(f));
       const latFrac = Math.min(1, upTo / LAT);
       S.forEach((s) => beam(corner(s[0], s[1], 0), corner(s[0], s[1], latFrac), legR));
       for (let b = 0; b < baysFull; b++) {
@@ -85,47 +143,51 @@
         }
       }
       if (upTo < LAT) return;                                  // still assembling the base
-      // transition + TALL tubular tower (the dominant element)
-      const tubeRB = topHalf * 0.85, tubeRT = topHalf * 0.55;
-      const cone = new THREE.Mesh(new THREE.CylinderGeometry(tubeRB, topHalf * 1.1, transH, 16), M.trans);
-      cone.position.y = latH0 + transH / 2; tg.add(cone);
-      const tubeBottom = latH0 + transH, tubeH = towerTop - tubeBottom;
-      const tube = new THREE.Mesh(new THREE.CylinderGeometry(tubeRT, tubeRB, tubeH, 22), M.tower);
+      const tubeRB = topHalf * 1.0, tubeRT = topHalf * 0.78;
+      const cone = new THREE.Mesh(new THREE.CylinderGeometry(tubeRB, topHalf * 1.18, transH, 18), M.trans);
+      cone.position.y = latH + transH / 2; tg.add(cone);
+      const tubeBottom = latH + transH, tubeH = towerTop - tubeBottom;
+      const tube = new THREE.Mesh(new THREE.CylinderGeometry(tubeRT, tubeRB, tubeH, 28), M.tower);
       tube.position.y = tubeBottom + tubeH / 2; tg.add(tube);
-      const r = tubeRT + (tubeRB - tubeRT) * 0.18 + 0.02;
-      const band = new THREE.Mesh(new THREE.CylinderGeometry(r, r, tubeH * 0.045, 22), M.orange);
-      band.position.y = tubeBottom + tubeH * 0.86; tg.add(band);
+      [0.80, 0.90].forEach((fr) => {
+        const r = (tubeRT + (tubeRB - tubeRT) * (1 - fr)) + 0.04;
+        const band = new THREE.Mesh(new THREE.CylinderGeometry(r, r, tubeH * 0.04, 28), M.orange);
+        band.position.y = tubeBottom + tubeH * fr; tg.add(band);
+      });
     }
 
     // ---- S120 tubular steel tower ----
     function buildTubular(tg, towerTop, upTo) {
-      const h = towerTop * upTo, rB = 0.92, rT = 0.46;
+      const h = towerTop * upTo, rB = towerTop * 0.05, rT = towerTop * 0.026;
       const rTopAt = rB + (rT - rB) * upTo;
-      const tube = new THREE.Mesh(new THREE.CylinderGeometry(rTopAt, rB, h, 22), M.tower);
+      const tube = new THREE.Mesh(new THREE.CylinderGeometry(rTopAt, rB, h, 28), M.tower);
       tube.position.y = h / 2; tg.add(tube);
-      const flange = new THREE.Mesh(new THREE.CylinderGeometry(rB + 0.08, rB + 0.12, 0.45, 20), M.towerLo);
-      flange.position.y = 0.22; tg.add(flange);
+      const flange = new THREE.Mesh(new THREE.CylinderGeometry(rB + 0.1, rB + 0.16, 0.5, 24), M.towerLo);
+      flange.position.y = 0.25; tg.add(flange);
       if (upTo >= 1) {
-        const band = new THREE.Mesh(new THREE.CylinderGeometry(rT + 0.02, rT + 0.04, h * 0.035, 22), M.orange);
-        band.position.y = h * 0.9; tg.add(band);
+        [0.82, 0.92].forEach((fr) => {
+          const r = (rT + (rB - rT) * (1 - fr)) + 0.04;
+          const band = new THREE.Mesh(new THREE.CylinderGeometry(r, r, h * 0.035, 28), M.orange);
+          band.position.y = h * fr; tg.add(band);
+        });
       }
     }
 
-    function buildRotor(tg, hub, isHLT, nBlades, spins, idx, id) {
-      const nacL = isHLT ? 4.4 : 3.8, nacW = isHLT ? 1.9 : 1.6, nacH = isHLT ? 1.6 : 1.4;
+    // ---- nacelle + GLB rotor clone (rotor diameter ≈ tower height); spins about local z ----
+    function buildRotor(tg, hub, isHLT, towerTop, spins, idx, id) {
+      const nacL = isHLT ? towerTop * 0.16 : towerTop * 0.15;
+      const nacW = isHLT ? towerTop * 0.07 : towerTop * 0.065;
+      const nacH = isHLT ? towerTop * 0.062 : towerTop * 0.058;
       const nac = new THREE.Mesh(new THREE.BoxGeometry(nacW, nacH, nacL), M.nacelle);
-      nac.position.set(0, hub + nacH * 0.15, -nacL * 0.28); tg.add(nac);
+      nac.position.set(0, hub + nacH * 0.12, -nacL * 0.25); tg.add(nac);
+
+      const rotorRadius = isHLT ? towerTop * 0.5 : towerTop * 0.48;       // rotor diameter ≈ tower height
       const rotor = new THREE.Group();
-      rotor.position.set(0, hub + nacH * 0.15, nacL * 0.34);
-      const hubMesh = new THREE.Mesh(new THREE.ConeGeometry(isHLT ? 0.74 : 0.62, 1.6, 18), M.hub);
-      hubMesh.rotation.x = Math.PI / 2; rotor.add(hubMesh);
-      const bladeLen = isHLT ? 10.5 : 8.8;
-      for (let b = 0; b < nBlades; b++) {
-        const blade = new THREE.Mesh(bladeGeo, M.blade);
-        blade.scale.set(1, bladeLen, 1);
-        blade.position.y = 0.45;
-        blade.rotation.z = (b * 2 * Math.PI) / 3;
-        rotor.add(blade);
+      rotor.position.set(0, hub + nacH * 0.12, nacL * 0.4);               // on the hub axis, ahead of nacelle
+      if (rotorProto) {
+        const clone = rotorProto.clone(true);                            // shares geometry, clones node graph
+        clone.scale.setScalar(rotorRadius);
+        rotor.add(clone);
       }
       tg.add(rotor);
       rotors.push({ rotor: rotor, spins: spins, idx: idx, id: id });
@@ -169,10 +231,10 @@
       }
       if (stage >= 4) {                                       // partial base (assembly) → full tower
         const upTo = stage >= 5 ? 1 : (isHLT ? 0.28 : 0.42);
-        if (isHLT) buildHLT(tg, hub, upTo); else buildTubular(tg, hub, upTo);
+        if (isHLT) buildHLT(tg, hub, upTo, t.x, t.z); else buildTubular(tg, hub, upTo);
       }
-      if (stage >= 5) {                                       // nacelle + rotor
-        buildRotor(tg, hub, isHLT, stage >= 6 ? 3 : 2, stage >= 7, idx, t.id);
+      if (stage >= 5) {                                       // nacelle + GLB rotor (spins when live)
+        buildRotor(tg, hub, isHLT, hub, stage >= 7, idx, t.id);
       }
 
       tg.userData = { id: t.id, idx: idx, stage: stage, model: t.model };
@@ -198,5 +260,5 @@
              beamCount: beams.length, turbineCount: T.length, mats: M };
   }
 
-  window.Turbine3D = { buildFarm: buildFarm };
+  window.Turbine3D = { buildFarm: buildFarm, loadRotor: loadRotor };
 })();

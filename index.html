@@ -6,13 +6,14 @@
   <title>Suzlon Grid Lab — Wind Power Evacuation Command Center</title>
   <meta name="description" content="Visual tracker for wind-farm 33kV power-evacuation build-out across India — Dog & Panther lines, pooling substations, and a 3D farm view. Unofficial concept lab." />
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' fill='%23121417'/%3E%3Ccircle cx='8' cy='8' r='4' fill='%232DD4BF'/%3E%3C/svg%3E" />
-  <link rel="stylesheet" href="assets/css/styles.css?v=5" />
+  <link rel="stylesheet" href="assets/css/styles.css?v=11" />
 </head>
 <body>
   <header id="topbar">
     <div class="wordmark">Suzlon / Grid Lab</div>
     <nav class="crumbs" id="crumbs"></nav>
     <div class="topbar-right">
+      <a class="nav-link" id="nav-insights" onclick="App.go('#/insights')"><span class="nl-dot"></span>Insights</a>
       <span class="asof" id="asof"></span>
     </div>
   </header>
@@ -25,9 +26,10 @@
         <svg id="india-svg" preserveAspectRatio="xMidYMid meet"></svg>
         <div class="map-flyout" id="map-flyout"></div>
         <div class="map-overlay-title">
-          <h1>The grid is the bottleneck.</h1>
-          <p>Turbines erect in months; the 33&nbsp;kV evacuation lines and pooling
-             substations that let them export take far longer. This tracks that build-out.</p>
+          <h1>Turbine to grid, tracked.</h1>
+          <p>Every wind farm's 33&nbsp;kV evacuation lines and pooling substation —
+             from first foundation to full export, across India.</p>
+          <a class="ov-link" onclick="App.go('#/insights')">Open portfolio insights →</a>
         </div>
       </div>
     </section>
@@ -56,21 +58,28 @@
         <button class="btn" onclick="App.go('#/')">← Back to India map</button>
       </div>
     </section>
+
+    <!-- LEVEL 1b — portfolio insights / analytics -->
+    <section id="insights-view" class="view">
+      <div class="ins-scroll" id="ins-scroll"><!-- built by view-insights.js --></div>
+    </section>
   </main>
 
   <!-- vendored, offline -->
   <script src="assets/vendor/three.min.js"></script>
+  <script src="assets/vendor/GLTFLoader.js?v=11"></script>
   <script src="assets/vendor/anime.iife.min.js"></script>
   <!-- data -->
-  <script src="assets/data/projects.js?v=5"></script>
-  <script src="assets/data/india-geo.js?v=5"></script>
+  <script src="assets/data/projects.js?v=11"></script>
+  <script src="assets/data/india-geo.js?v=11"></script>
   <!-- engine + app (bump ?v= on every change-set so http.server never serves stale assets) -->
-  <script src="assets/js/turbine.js?v=5"></script>
-  <script src="assets/js/turbine3d.js?v=5"></script>
-  <script src="assets/js/app.js?v=5"></script>
-  <script src="assets/js/view-map.js?v=5"></script>
-  <script src="assets/js/view-project.js?v=5"></script>
-  <script src="assets/js/view-farm3d.js?v=5"></script>
-  <script src="assets/js/agent.js?v=5"></script>
+  <script src="assets/js/turbine.js?v=11"></script>
+  <script src="assets/js/turbine3d.js?v=11"></script>
+  <script src="assets/js/app.js?v=11"></script>
+  <script src="assets/js/view-map.js?v=11"></script>
+  <script src="assets/js/view-project.js?v=11"></script>
+  <script src="assets/js/view-farm3d.js?v=11"></script>
+  <script src="assets/js/view-insights.js?v=11"></script>
+  <script src="assets/js/agent.js?v=11"></script>
 </body>
 </html>

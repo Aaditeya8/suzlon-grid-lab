@@ -11,7 +11,8 @@ window.GRID_DATA = {
   meta: {
     title: "Suzlon Grid Lab",
     subtitle: "Wind Power Evacuation — Implementation Command Center",
-    asOf: "Q2 FY26",
+    asOf: "Jun 2026",
+    asOfDate: "2026-06-17",       // anchor for the per-stage execution timeline / ageing
     indiaWindGW: 53.6,            // total installed wind, India (Oct 2025)
     suzlonInstalledGW: 20.1,      // Suzlon cumulative installed
     target2030GW: 140,            // national wind target by 2030

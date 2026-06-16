@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Suzlon Turbine Lab — S144 / S120 candidate</title>
+  <style>
+    html, body { margin:0; padding:0; width:100%; height:100%; overflow:hidden;
+      background:#0b1b16; font:13px/1.4 system-ui, sans-serif; color:#cfe0d8; }
+    #stage { display:block; width:100vw; height:100vh; }
+    #hud { position:fixed; top:10px; left:10px; z-index:5; background:rgba(8,18,15,.72);
+      padding:10px 12px; border:1px solid #1d3a30; border-radius:8px; }
+    #hud button { font:inherit; color:#cfe0d8; background:#143028; border:1px solid #2a5546;
+      border-radius:5px; padding:5px 9px; margin-right:6px; cursor:pointer; }
+    #hud button.on { background:#2a7a5e; border-color:#34e39a; color:#eafff6; }
+    #hud label { margin-left:6px; opacity:.8; }
+    #hud .row { margin-top:6px; }
+  </style>
+</head>
+<body>
+  <canvas id="stage"></canvas>
+  <div id="hud">
+    <div class="row">
+      <button id="bBoth" class="on">S144 + S120</button>
+      <button id="bS144">S144 only</button>
+      <button id="bS120">S120 only</button>
+    </div>
+    <div class="row">
+      <button id="bRotate" class="on">auto-rotate: on</button>
+      <button id="bSpin" class="on">blade spin: on</button>
+      <label id="info"></label>
+    </div>
+  </div>
+  <script src="./assets/vendor/three.min.js"></script>
+  <script src="./assets/vendor/GLTFLoader.js"></script>
+  <script src="./assets/js/turbine-lab.js"></script>
+</body>
+</html>

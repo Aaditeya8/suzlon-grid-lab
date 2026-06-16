@@ -1,0 +1,242 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Grid Lab — Loader Lab (test element)</title>
+<meta name="description" content="Standalone test bench for the Grid Lab boot/loading animation — HUD ring + turbine rotor, anime.js-driven, styled after the Anatomy Lab.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' fill='%23121417'/%3E%3Ccircle cx='8' cy='8' r='4' fill='%232DD4BF'/%3E%3C/svg%3E">
+<style>
+  @font-face { font-family:'Bricolage Grotesque'; src:url('assets/fonts/bricolage-600.woff2') format('woff2'); font-weight:600; font-display:swap; }
+  @font-face { font-family:'Bricolage Grotesque'; src:url('assets/fonts/bricolage-800.woff2') format('woff2'); font-weight:800; font-display:swap; }
+  @font-face { font-family:'Manrope'; src:url('assets/fonts/manrope-400.woff2') format('woff2'); font-weight:400; font-display:swap; }
+  @font-face { font-family:'Manrope'; src:url('assets/fonts/manrope-600.woff2') format('woff2'); font-weight:600; font-display:swap; }
+
+  :root{
+    --ink:#121417; --ink-2:#181b1f; --bone:#EDEDE8; --dim:#9aa0a6; --dim-2:#6c727a;
+    --line:#2A2E33; --teal:#2DD4BF; --amber:#F5A623;
+    --mono:ui-monospace,'SF Mono',SFMono-Regular,Menlo,Consolas,monospace;
+    --display:'Bricolage Grotesque',system-ui,sans-serif;
+    --body:'Manrope',system-ui,sans-serif;
+  }
+  *{margin:0;padding:0;box-sizing:border-box;}
+  html,body{height:100%;}
+  body{
+    background:var(--ink); color:var(--bone); font-family:var(--body);
+    overflow:hidden; -webkit-font-smoothing:antialiased;
+    /* faint blueprint grid + vignette, like the lab backdrops */
+    background-image:
+      radial-gradient(120% 90% at 50% 38%, rgba(45,212,191,0.05), transparent 60%),
+      linear-gradient(rgba(255,255,255,0.018) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,255,255,0.018) 1px, transparent 1px);
+    background-size: auto, 34px 34px, 34px 34px;
+  }
+  .mono{font-family:var(--mono); letter-spacing:.14em; text-transform:uppercase;}
+
+  /* ---------- the boot/loading overlay (this is the deliverable) ---------- */
+  #boot{
+    position:fixed; inset:0; z-index:50;
+    display:flex; flex-direction:column; align-items:center; justify-content:center; gap:30px;
+    transition:opacity .6s ease, transform .6s ease;
+  }
+  #boot.gone{opacity:0; transform:scale(1.035); pointer-events:none;}
+
+  .brand{font-family:var(--display); font-weight:800; font-size:15px; letter-spacing:.04em;}
+  .brand .slash{color:var(--teal);}
+
+  .stage{position:relative; width:380px; height:380px;}
+  @media (max-width:460px){ .stage{width:300px; height:300px;} }
+
+  svg.ring{position:absolute; inset:0; width:100%; height:100%; overflow:visible;}
+  .ring-static{stroke:rgba(45,212,191,.28); fill:none; transition:stroke .45s ease;}
+  .ring-static.cross{stroke:rgba(237,237,232,.35);}
+  .tick{stroke:rgba(237,237,232,.34); opacity:0;}
+  .tick.major{stroke:rgba(237,237,232,.6);}
+  .arc-track{stroke:rgba(255,255,255,.05); fill:none;}
+  .arc{stroke:var(--teal); fill:none; stroke-linecap:round; filter:drop-shadow(0 0 4px rgba(45,212,191,.55));}
+  .stage.locked .ring-static{stroke:rgba(45,212,191,.7);}
+  .flash{fill:none; stroke:var(--teal); opacity:0;}
+  .stage.locked .flash{animation:flash .7s ease-out;}
+  @keyframes flash{0%{opacity:.5; stroke-width:.4;} 100%{opacity:0; stroke-width:6;}}
+
+  /* rotor — three aerofoil blades, continuous spin */
+  .rotor{
+    position:absolute; top:50%; left:50%; width:158px; height:158px; margin:-79px 0 0 -79px;
+    transform-origin:50% 50%; animation:spin 3.4s linear infinite; opacity:0;
+  }
+  .stage.locked .rotor{animation-duration:1.1s;}
+  @keyframes spin{to{transform:rotate(360deg);}}
+  .blade{fill:rgba(237,237,232,.92); stroke:var(--teal); stroke-width:.6; stroke-opacity:.5;}
+  .hub{fill:#cfd2d6;} .hub-i{fill:var(--ink-2);}
+
+  .readout{display:flex; flex-direction:column; align-items:center; gap:10px; opacity:0;}
+  .pct{font-family:var(--mono); font-size:38px; font-weight:600; letter-spacing:.04em; color:var(--bone); line-height:1;}
+  .pct .s{color:var(--teal); font-size:22px; vertical-align:super; margin-left:2px;}
+  .status{font-size:10.5px; color:var(--teal); min-height:13px;}
+  .tagline{font-size:9.5px; color:var(--dim-2); opacity:0;}
+
+  /* ---------- what the loader reveals (so the dismiss reads) ---------- */
+  #ready{position:fixed; inset:0; z-index:10; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:14px;}
+  #ready .big{font-family:var(--display); font-weight:800; font-size:clamp(34px,7vw,72px); letter-spacing:-.02em;}
+  #ready .big em{color:var(--teal); font-style:normal;}
+  #ready .sub{color:var(--dim); font-size:14px; max-width:440px; text-align:center;}
+
+  .controls{position:fixed; bottom:22px; left:50%; transform:translateX(-50%); z-index:80; display:flex; gap:10px; align-items:center;}
+  .btn{
+    font-family:var(--mono); font-size:11px; letter-spacing:.12em; text-transform:uppercase;
+    color:var(--bone); background:var(--ink-2); border:1px solid var(--line);
+    padding:9px 16px; border-radius:8px; cursor:pointer; transition:border-color .15s, color .15s;
+  }
+  .btn:hover{border-color:var(--teal); color:var(--teal);}
+  .note{position:fixed; top:16px; left:18px; z-index:80; font-size:9.5px; color:var(--dim-2);}
+</style>
+</head>
+<body>
+
+  <div class="note mono">Loader Lab · test element · not yet wired into the app</div>
+
+  <!-- revealed underneath when the loader finishes -->
+  <section id="ready">
+    <div class="big">Grid <em>ready.</em></div>
+    <div class="sub">The boot sequence above covers the heavy first paint — vendored three.js, the India basemap projection, and the 3D farm scene build.</div>
+  </section>
+
+  <!-- THE LOADER -->
+  <div id="boot">
+    <div class="brand">SUZLON <span class="slash">⁄</span> GRID LAB</div>
+
+    <div class="stage" id="stage">
+      <svg class="ring" viewBox="0 0 100 100" aria-hidden="true">
+        <circle class="ring-static" cx="50" cy="50" r="47"/>
+        <circle class="ring-static" cx="50" cy="50" r="32.5"/>
+        <path class="ring-static cross" d="M47.6 50 H52.4 M50 47.6 V52.4"/>
+        <circle class="arc-track" cx="50" cy="50" r="44" stroke-width="1.1"/>
+        <circle class="arc" id="arc" cx="50" cy="50" r="44" stroke-width="1.6" transform="rotate(-90 50 50)"/>
+        <circle class="flash" cx="50" cy="50" r="44"/>
+        <g id="ticks"></g>
+      </svg>
+
+      <svg class="rotor" id="rotor" viewBox="0 0 100 100" aria-hidden="true">
+        <g id="blades"></g>
+        <circle class="hub" cx="50" cy="50" r="4.4"/>
+        <circle class="hub-i" cx="50" cy="50" r="1.8"/>
+      </svg>
+    </div>
+
+    <div class="readout" id="readout">
+      <div class="pct"><span id="pctNum">000</span><span class="s">%</span></div>
+      <div class="status mono" id="status">BOOTING GRID LAB</div>
+    </div>
+
+    <div class="tagline mono" id="tagline">Unofficial concept lab · power-evacuation command center</div>
+  </div>
+
+  <div class="controls">
+    <button class="btn" id="replay">↻ Replay</button>
+  </div>
+
+  <script src="assets/vendor/anime.iife.min.js"></script>
+  <script>
+  (function(){
+    "use strict";
+    var anime = window.anime;
+    var stage = document.getElementById('stage');
+    var boot  = document.getElementById('boot');
+    var arc   = document.getElementById('arc');
+    var pctNum= document.getElementById('pctNum');
+    var statusEl = document.getElementById('status');
+
+    /* ---- build the rotor: 3 aerofoil blade silhouettes at 0/120/240 ---- */
+    var BLADE = 'M50 45 C45.6 41,44 28,47 13 C47.8 8.6,49 5,50 3 C51 5,52.2 9.4,52.8 17 C53.4 28,55 41,50 45 Z';
+    (function(){
+      var g = document.getElementById('blades'), ns='http://www.w3.org/2000/svg';
+      for(var i=0;i<3;i++){
+        var p=document.createElementNS(ns,'path');
+        p.setAttribute('class','blade');
+        p.setAttribute('d',BLADE);
+        p.setAttribute('transform','rotate('+(i*120)+' 50 50)');
+        g.appendChild(p);
+      }
+    })();
+
+    /* ---- build the tick ring (72 ticks, every 6th major) ---- */
+    (function(){
+      var g=document.getElementById('ticks'), ns='http://www.w3.org/2000/svg', N=72;
+      for(var i=0;i<N;i++){
+        var a=i*(Math.PI*2/N), major=(i%6===0);
+        var ro=41, ri=major?36:38.2;
+        var s=Math.sin(a), c=Math.cos(a);
+        var ln=document.createElementNS(ns,'line');
+        ln.setAttribute('class', major?'tick major':'tick');
+        ln.setAttribute('x1',(50+ro*s).toFixed(2)); ln.setAttribute('y1',(50-ro*c).toFixed(2));
+        ln.setAttribute('x2',(50+ri*s).toFixed(2)); ln.setAttribute('y2',(50-ri*c).toFixed(2));
+        ln.setAttribute('stroke-width', major?'0.7':'0.45');
+        g.appendChild(ln);
+      }
+    })();
+
+    /* ---- progress arc setup ---- */
+    var R=44, C=2*Math.PI*R;
+    arc.style.strokeDasharray = C;
+    function setArc(p){ arc.style.strokeDashoffset = C*(1 - p/100); }
+
+    var STEPS=[
+      [0,  'BOOTING GRID LAB'],
+      [18, 'LOADING EVACUATION NETWORK'],
+      [40, 'PROJECTING INDIA BASEMAP'],
+      [62, 'BUILDING 3D FARM'],
+      [83, 'SYNCING DOG ⁄ PANTHER CONDUCTORS'],
+      [100,'GRID READY']
+    ];
+    function setStatus(p){
+      var msg=STEPS[0][1];
+      for(var i=0;i<STEPS.length;i++){ if(p>=STEPS[i][0]) msg=STEPS[i][1]; }
+      if(statusEl.textContent!==msg) statusEl.textContent=msg;
+    }
+    function setPct(p){ pctNum.textContent = String(Math.round(p)).padStart(3,'0'); }
+
+    function reset(){
+      boot.classList.remove('gone'); stage.classList.remove('locked');
+      setArc(0); setPct(0); setStatus(0);
+      // hide everything for a clean re-intro
+      document.querySelectorAll('.ring-static, .tick').forEach(function(e){ e.style.opacity=0; });
+      [document.getElementById('rotor'), document.getElementById('readout'), document.getElementById('tagline')]
+        .forEach(function(e){ e.style.opacity=0; });
+      document.getElementById('ready').style.opacity=0;
+    }
+
+    function play(){
+      reset();
+      /* intro choreography — straight out of the Anatomy Lab playbook */
+      anime.animate('.ring-static', { opacity:[0,1], duration:700, delay:anime.stagger(120), ease:'outQuad' });
+      anime.animate('.tick',        { opacity:[0,1], duration:450, delay:anime.stagger(6),   ease:'outQuad' });
+      anime.animate('#rotor',   { opacity:[0,1], scale:[0.62,1], duration:900, ease:'outCubic' });
+      anime.animate('#readout', { opacity:[0,1], translateY:[14,0], duration:700, delay:200, ease:'outCubic' });
+      anime.animate('#tagline', { opacity:[0,1], duration:700, delay:520, ease:'outQuad' });
+
+      /* progress — numeric proxy + onUpdate, the project's confirmed pattern */
+      var o={v:0};
+      anime.animate(o, {
+        v:100, duration:3100, delay:340, ease:'inOutQuart',
+        onUpdate:function(){ setPct(o.v); setArc(o.v); setStatus(o.v); },
+        onComplete:finish
+      });
+    }
+
+    function finish(){
+      setPct(100); setArc(100); setStatus(100);
+      stage.classList.add('locked');                 // teal lock + flash + rotor spin-up (CSS)
+      setTimeout(function(){
+        anime.animate('#ready', { opacity:[0,1], translateY:[12,0], duration:700, ease:'outCubic' });
+        boot.classList.add('gone');
+      }, 650);
+    }
+
+    document.getElementById('replay').addEventListener('click', play);
+    // expose for screenshot/verification harnesses
+    window.__loader = { play:play, finish:finish, reset:reset };
+    play();
+  })();
+  </script>
+</body>
+</html>

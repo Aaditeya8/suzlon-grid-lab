@@ -34,12 +34,67 @@ Run it: `cd ~/projects/suzlon-grid-lab && python3 -m http.server 8123` → http:
 | **v2 — expansion spec** | **DONE.** Written & reviewed (the file above). |
 | **v2 — implementation** | **DONE (workstreams 1–6).** Built on branch `v2-expansion`, verified end-to-end via Playwright — zero console errors across map → project → 3D (S144 construction + S120 energized) → agent; tool backbones (set_filters / explain / portfolio_stats) confirmed driving the UI. Screenshots refreshed (`docs/screenshots/05–10`). **All seven workstreams (0–6) now complete** — full-J&K map regenerated 2026-06-17. |
 | **v2.1 — polish & agent modes** | **DONE.** Spec: `docs/superpowers/specs/2026-06-17-grid-lab-polish-and-agent-modes-spec.md`. See below. |
+| **v2.2 — GLB turbine + agent reliability** | **DONE (2026-06-17).** Real GLB rotor in the live farm, lattice origin-stacking fixed, in-app agent now surfaces real errors. See below. |
+| **v3 — Insights, stage dates, agent robustness, ship** | **DONE (2026-06-17).** Portfolio **Insights** analytics view; per-stage **finished-date timeline** + **ageing / inter-task-latency** model; **agent reliability overhaul** (non-streaming tool calls, fuzzy nav, graceful fallback); "grid is the bottleneck" headline removed. Committed, pushed to GitHub `main`, deployed on Vercel from git. See below. |
 
 ### v2.1 polish round (2026-06-17) — from review feedback
 - **Cache-busting** — every asset URL in `index.html` carries `?v=<N>` (now `v=5`); **bump it on every change-set** so `python -m http.server` never serves stale CSS/JS. (Root cause of the "Chrome cuts off the substation / Safari is fine" report — it was a stale-cache, not a render bug; ⌘⇧R confirmed the fix.)
 - **3D turbines, take 2** — were squat/blocky with stubby tubes and bare-lattice "pylons". Now tall + slender: a **short open hybrid-lattice base (34%)** under a **tall dominant white tubular tower**; stage-4 shows only a short base; **substation redesigned** (transformer bank + bushings + gantry + lit hut) so it never reads as a turbine lattice. Camera pulled in for the taller turbines.
 - **Agent** — moved to **bottom-right**; **Chat vs Agent** mode toggle (Chat = fast, in-depth, no tools; Agent = + tools + plan/act orchestration); reliability fixes (tool-call messages send `content:null`, empty-turn + error fallbacks → no more silent "no answer"; input re-enables); suggestions hide after first message; thin styled scrollbar (kills the stray scroll component). Live LLM round-trip still needs a Groq key in Settings.
 - **WTG type before 3D** — project panel shows a **turbine badge** (model · MW · rotor · tower · count) beside the *Enter 3D farm* CTA.
+
+### v2.2 round (2026-06-17) — turbine model + agent reliability (cache `v=6`)
+- **Real GLB rotor in the farm** — the procedural blades read as warped slabs (rejected by review). Replaced
+  with the proven GLB rotor (`assets/turbine/turbine.glb`, "Wind Turbine" by Shivansh Singh, CC BY 4.0) +
+  vendored `assets/vendor/GLTFLoader.js` — same byte-identical three.js as the sustainability hero, so no
+  three.js bump. `turbine3d.js` now: `loadRotor()` (loads the GLB once, caches the promise, resolves null on
+  failure) + `buildRotorPrototype()` (unit rotor, hub pivot at origin — do NOT bbox-recenter or it wobbles) +
+  per-turbine `clone(true)` (shares geometry → memory ≈ one rotor). The procedural **HLT tower** was kept and
+  improved (lattice 54%, wide base, 8 bays); beam radii are `towerTop*0.0049/0.0024` for farm scale.
+- **Lattice origin-stacking bug fixed** — lattice beams batch into ONE scene-root InstancedMesh, but their
+  coords were turbine-LOCAL, so every turbine's lattice collapsed onto the world origin. `buildHLT` now bakes
+  the turbine's world `(ox,oz)` into every beam. `view-farm3d.js` `show()` now `await`s `loadRotor()` before
+  building (guards against navigating away mid-load). Verified: Fatehgarh (S144) renders 64/134 turbines
+  spread across the field, proper GLB rotors, **0 console errors**.
+- **Bench (kept as test rigs):** `turbine-lab.html` + `assets/js/turbine-lab.js` (S144/S120 inspector).
+- **In-app agent reliability** — root cause of the "I couldn't produce an answer" dead-end: the SSE parser
+  **silently swallowed mid-stream errors** (`data:{"error":…}` has no `choices`) and ignored `finish_reason`.
+  `agent.js` now: throws on `j.error` (→ "Groq stream error: …"), tracks `finish_reason` + a `reasoning`
+  channel, the no-answer message names the finish reason, and `showError` parses Groq's `{error:{message}}`
+  JSON with actionable 401/404/429 hints. Verified live (dummy key → "Groq returned 401 · Invalid API Key").
+  Model `llama-3.3-70b-versatile` confirmed current (not decommissioned). **Note: a successful live answer
+  still needs a valid Groq key in Settings — only the user has one; the error paths are verified.**
+- **Loader test element (parked):** `loader-lab.html` — anime.js HUD-ring + turbine-rotor boot animation,
+  styled after the Anatomy Lab. Built per request but **not wired into the app** (user paused it).
+- **All changes uncommitted** (no commit requested). Files touched: `turbine3d.js`, `view-farm3d.js`,
+  `agent.js`, `index.html` (+GLTFLoader, `v=6`); added `turbine.glb`, `GLTFLoader.js`, bench + loader.
+
+### v3 round (2026-06-17) — analytics, stage dates, agent robustness, ship (cache `v=11`)
+- **Per-stage finished-date timeline** (`app.js` `stageTimeline(p)`) — deterministic from seed + progress +
+  commissioning target. Each EPC stage gets a **finished date** (done), an **in-progress age** (active), or a
+  **projected ETA** (pending); plus inter-stage **latency**, slowest stage, and slip-vs-target. The final
+  Commissioning gap inflates when the line/substation lag, so the evacuation bottleneck shows up as a *number*,
+  not a slogan. Anchored to `meta.asOfDate` (`2026-06-17`). Helpers: `fyToDate`, `fmtMonth/Day`, `ageBucket`,
+  `resolveProjectId` (Dice-coefficient fuzzy matcher).
+- **Insights view** (`+assets/js/view-insights.js`, route `#/insights`, topbar link + map CTA) — KPI strip
+  (incl. stranded MW + avg stage age + avg days stuck in Commissioning), capacity-by-status stacked bar,
+  conductor build-out, **EPC stage funnel**, **inter-task latency bars**, **ageing table** (active fleet, bucketed
+  On-track/Watch/Delayed/Critical, click-through), and an **execution-timeline Gantt** (stage segments + projected
+  tail + today line). Pure inline HTML/SVG, no chart lib.
+- **Project view** — added an **Execution timeline** section (finished date / age / projected per stage + slip).
+- **Agent robustness** (`agent.js`) — root-caused the user's tool failures: (1) **tool calls now go
+  NON-streaming** (Groq's llama SSE tool-calling throws `Failed to call a function` under a large prompt; same
+  body is reliable non-streamed); (2) **lean agent prompt** (compact id→name index, not the full data dump);
+  (3) **retry** on transient TOOL_USE_FAILED + **graceful no-tools fallback** (answers from knowledge when
+  tool-calling gives up); (4) fixed a crash on `arguments:"null"` (`Object.keys(null)`); (5) **fuzzy project
+  resolution** (`resolveProjectId`) + **`lastProject` memory** so "view chitrdurga" and "take me there in 3D"
+  work; (6) `navigate` gained `insights` and an optional `view`; get_project/portfolio_stats now return
+  stage dates, latency and ageing. Verified live against Groq (typo nav, context nav, stranded/latency Qs,
+  insights nav, filters) — 0 console errors.
+- **Removed** the "The grid is the bottleneck." map headline → neutral "Turbine to grid, tracked." + insights CTA.
+- **Shipped:** committed (was uncommitted since v2.1), pushed to **GitHub `main`** (`Aaditeya8/suzlon-grid-lab`),
+  **deployed on Vercel from git** (auto-deploy on push). Groq key stays client-side (localStorage) — for the
+  public deploy, paste a key in Settings to enable live LLM answers; everything else works without one.
 
 ### What v1 already does (working today)
 - **India map**: 18 real-located projects as pins, status colors, KPIs, status/conductor/state
@@ -101,7 +156,9 @@ chat UI), `⟳ view-farm3d.js` (rewrite), `~ app.js` (stage model + glossary), `
 - ✅ **6 Groq agent** — new `agent.js`: left dock, SSE streaming, Settings/localStorage key, tools (navigate/set_filters/list_projects/get_project/portfolio_stats/explain) that drive the UI. **Live LLM round-trip still needs a Groq key pasted in Settings** to verify (UI + tool backbones already confirmed).
 - ✅ **0 J&K map regen** — DONE (2026-06-17). `india-geo.js` regenerated from `udit-001/india-maps-data` (India-claim-correct): 759 districts dissolved → state outlines via shapely `unary_union`, simplified + projected with the same equirectangular transform (so pins still align). Full Jammu & Kashmir incl. PoK + Aksai Chin (J&K UT + Ladakh UT); bbox now reaches lat 37.4 (was 35.8). Verified in-browser — 0 console errors, pins correctly placed.
 
-**Next:** v2 stays on `v2-expansion` (kept as-is — `master` remains v1, per your call). Only open item: paste a Groq key in Settings (⚙) to smoke-test the agent's live LLM round-trip (UI + tool backbones already verified).
+**Next:** v2 stays on `v2-expansion` (kept as-is — `master` remains v1, per your call). Open items: (1) paste a
+valid Groq key in Settings (⚙) for a live agent answer — error paths now verified, so any failure self-explains;
+(2) decide whether to wire `loader-lab.html` into the farm's first paint; (3) commit the v2.2 change-set.
 
 ---
 
